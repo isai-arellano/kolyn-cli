@@ -46,6 +46,16 @@ func getTemplatesFromSkills() []ComposeTemplate {
 		}
 
 		name := strings.TrimSpace(lines[0])
+		name = strings.TrimPrefix(name, "1. ")
+		name = strings.TrimPrefix(name, "2. ")
+		name = strings.TrimPrefix(name, "3. ")
+		name = strings.TrimPrefix(name, "4. ")
+		name = strings.TrimPrefix(name, "5. ")
+		name = strings.TrimPrefix(name, "6. ")
+		name = strings.TrimPrefix(name, "7. ")
+		name = strings.TrimPrefix(name, "8. ")
+		name = strings.TrimPrefix(name, "9. ")
+		name = strings.TrimSpace(name)
 		sectionContent := strings.Join(lines[1:], "\n")
 
 		if name == "" || !strings.HasPrefix(sectionContent, "```yaml") {
