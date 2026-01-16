@@ -11,12 +11,13 @@ import (
 	"github.com/yourusername/kolyn/cmd/ui"
 )
 
-var upCmd = &cobra.Command{
-	Use:   "up",
-	Short: "Levanta servicios Docker desde templates",
-	Long:  `Crea y levanta servicios Docker desde templates pre-configurados.`,
+var dockerUpCmd = &cobra.Command{
+	Use:     "up",
+	Short:   "Levanta servicios Docker desde templates",
+	Long:    `Crea y levanta servicios Docker desde templates pre-configurados.`,
+	Aliases: []string{"docker-up"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runUpCommand()
+		return runDockerUpCommand()
 	},
 }
 
@@ -82,6 +83,15 @@ func getTemplatesFromSkills() []ComposeTemplate {
 		serviceName := strings.ToLower(name)
 		serviceName = strings.ReplaceAll(serviceName, " ", "-")
 		serviceName = strings.ReplaceAll(serviceName, "+", "-")
+		serviceName = strings.ReplaceAll(serviceName, "(automatizacion)", "")
+		serviceName = strings.ReplaceAll(serviceName, "(automatización)", "")
+		serviceName = strings.ReplaceAll(serviceName, "(producción)", "")
+		serviceName = strings.ReplaceAll(serviceName, "(production)", "")
+		serviceName = strings.ReplaceAll(serviceName, "()", "")
+		serviceName = strings.Trim(serviceName, "-")
+		if serviceName == "" {
+			serviceName = strings.ToLower(strings.Split(name, " ")[0])
+		}
 
 		templates = append(templates, ComposeTemplate{
 			Name:        name,
@@ -109,7 +119,7 @@ func getDefaultTemplates() []ComposeTemplate {
 	}
 }
 
-func runUpCommand() error {
+func runDockerUpCommand() error {
 	templates := getTemplatesFromSkills()
 
 	ui.ShowSection("🚀 Kolyn Up - Levantar Servicios")
@@ -238,52 +248,36 @@ func liftExistingService(dockerDir string, t ComposeTemplate) error {
 }
 
 func generateCompose(service string, templates []ComposeTemplate) string {
-	for _, t := range templates {
-		if t.Service == service {
-			homeDir, _ := os.UserHomeDir()
-			skillsPath := filepath.Join(homeDir, ".kolyn/skills", "automation", "docker-compose-automation.md")
-			content, err := os.ReadFile(skillsPath)
-			if err != nil {
-				return getDefaultCompose(service)
-			}
+	serviceClean := strings.ToLower(service)
+	serviceClean = strings.ReplaceAll(serviceClean, " ", "-")
+	serviceClean = strings.ReplaceAll(serviceClean, "(", "")
+	serviceClean = strings.ReplaceAll(serviceClean, ")", "")
 
-			sectionName := t.Name
-			sections := strings.Split(string(content), "### ")
-			for _, section := range sections {
-				if strings.HasPrefix(section, sectionName) {
-					lines := strings.Split(section, "\n")
-					var yamlLines []string
-					inYaml := false
-					for _, line := range lines {
-						if strings.HasPrefix(line, "```yaml") {
-							inYaml = true
-							continue
-						}
-						if strings.HasPrefix(line, "```") && inYaml {
-							break
-						}
-						if inYaml {
-							yamlLines = append(yamlLines, line)
-						}
-					}
-					if len(yamlLines) > 0 {
-						return strings.Join(yamlLines, "\n") + "\n"
-					}
-				}
-			}
+	for _, t := range templates {
+		nameClean := strings.ToLower(t.Name)
+		nameClean = strings.ReplaceAll(nameClean, " ", "-")
+		nameClean = strings.ReplaceAll(nameClean, "(", "")
+		nameClean = strings.ReplaceAll(nameClean, ")", "")
+		nameClean = strings.ReplaceAll(nameClean, "+", "-")
+
+		if t.Service == service || nameClean == serviceClean {
+			return getDefaultCompose(t.Service)
+		}
+
+		if strings.Contains(t.Service, service) || strings.Contains(service, t.Service) {
+			return getDefaultCompose(t.Service)
 		}
 	}
+
 	return getDefaultCompose(service)
 }
 
 func getDefaultCompose(service string) string {
 	switch service {
 	case "n8n":
-		return `version: '3.8'
-
-services:
+		return `services:
   n8n:
-    image: n8nio/n8n
+    image: n8nio/n8n:latest
     container_name: n8n
     restart: unless-stopped
     ports:

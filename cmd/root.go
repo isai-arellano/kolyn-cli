@@ -22,10 +22,18 @@ Usa 'kolyn <comando>' para interactuar.`,
 	},
 }
 
+var dockerCmd = &cobra.Command{
+	Use:   "docker",
+	Short: "Gestiona servicios Docker",
+	Long:  `Comandos para levantar y detener servicios Docker.`,
+}
+
 func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(skillsCmd)
-	rootCmd.AddCommand(upCmd)
+	rootCmd.AddCommand(dockerCmd)
+	dockerCmd.AddCommand(dockerUpCmd)
+	dockerCmd.AddCommand(dockerDownCmd)
 	skillsCmd.AddCommand(skillsPathsCmd)
 	skillsCmd.AddCommand(skillsListCmd)
 }
@@ -43,7 +51,8 @@ func showWelcome() {
 		{"kolyn skills", "Retorna JSON con skills disponibles para la IA"},
 		{"kolyn skills list", "Lista skills y permite ver/editar contenido"},
 		{"kolyn skills paths", "Retorna solo las rutas de skills"},
-		{"kolyn up", "Levanta servicios Docker desde templates"},
+		{"kolyn docker up", "Levanta servicios Docker desde templates"},
+		{"kolyn docker down", "Detiene servicios Docker levantados"},
 	}
 
 	for _, cmd := range commands {
@@ -52,7 +61,7 @@ func showWelcome() {
 	}
 
 	fmt.Println()
-	ui.YellowText.Println("💡 Tip: 'kolyn up' para levantar servicios Docker")
+	ui.YellowText.Println("💡 Tip: 'kolyn docker up' para levantar servicios Docker")
 	fmt.Println()
 }
 
