@@ -147,9 +147,20 @@ func startService(t ComposeTemplate, allTemplates []ComposeTemplate) error {
 
 	if _, err := os.Stat(dockerDir); err == nil {
 		ui.PrintWarning("El servicio '%s' ya existe en: %s", t.Name, dockerDir)
-		fmt.Print("¿Deseas sobreescribir? [s/n]: ")
+		fmt.Println()
+		ui.WhiteText.Println("  1. Sobrescribir (regenerar compose)")
+		ui.WhiteText.Println("  2. Levantar (iniciar servicio existente)")
+		ui.Gray.Println("  0. Cancelar")
+		fmt.Println()
+		fmt.Print("Selecciona una opción: ")
 		answer := readInput()
-		if strings.ToLower(answer) != "s" && strings.ToLower(answer) != "si" && strings.ToLower(answer) != "yes" {
+
+		switch answer {
+		case "1":
+			ui.PrintStep("Sobrescribiendo compose...")
+		case "2":
+			return liftExistingService(dockerDir, t)
+		default:
 			ui.PrintInfo("Operación cancelada")
 			return nil
 		}
@@ -194,6 +205,34 @@ func startService(t ComposeTemplate, allTemplates []ComposeTemplate) error {
 		ui.Gray.Printf("  Detener:     cd %s && docker compose down\n", dockerDir)
 		ui.Gray.Printf("  Acceder:     http://localhost:%s\n", t.Port)
 	}
+
+	return nil
+}
+
+func liftExistingService(dockerDir string, t ComposeTemplate) error {
+	composePath := filepath.Join(dockerDir, "docker-compose.yml")
+	if _, err := os.Stat(composePath); os.IsNotExist(err) {
+		ui.PrintWarning("No se encontró docker-compose.yml en: %s", dockerDir)
+		return nil
+	}
+
+	ui.PrintStep("Levantando servicio existente...")
+
+	cmd := exec.Command("docker", "compose", "up", "-d")
+	cmd.Dir = dockerDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error ejecutando docker compose: %w", err)
+	}
+
+	ui.PrintSuccess("Servicio '%s' levantado!", t.Name)
+	ui.Gray.Println("\nComandos útiles:")
+	ui.Gray.Printf("  Ver logs:    cd %s && docker compose logs -f\n", dockerDir)
+	ui.Gray.Printf("  Detener:     cd %s && docker compose down\n", dockerDir)
+	ui.Gray.Printf("  Acceder:     http://localhost:%s\n", t.Port)
 
 	return nil
 }
