@@ -11,10 +11,10 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "kolyn",
 	Short: "Herramienta CLI para ayudar a la IA con contexto y datos",
-	Long: `Kolyn es una herramienta que ayuda a agentes IA a:
-- Obtener información y datos del proyecto
-- Mantener contexto entre sesiones
-- Acceder a skills y configuraciones
+	Long: `Kolyn es una herramienta CLI que:
+- Agrega contexto del proyecto para agentes IA
+- Proporciona acceso a skills y templates
+- Permite levantar servicios Docker rápidamente
 
 Usa 'kolyn <comando>' para interactuar.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -25,6 +25,7 @@ Usa 'kolyn <comando>' para interactuar.`,
 func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(skillsCmd)
+	rootCmd.AddCommand(upCmd)
 	skillsCmd.AddCommand(skillsPathsCmd)
 	skillsCmd.AddCommand(skillsListCmd)
 }
@@ -42,6 +43,7 @@ func showWelcome() {
 		{"kolyn skills", "Retorna JSON con skills disponibles para la IA"},
 		{"kolyn skills list", "Lista skills y permite ver/editar contenido"},
 		{"kolyn skills paths", "Retorna solo las rutas de skills"},
+		{"kolyn up", "Levanta servicios Docker desde templates"},
 	}
 
 	for _, cmd := range commands {
@@ -50,7 +52,7 @@ func showWelcome() {
 	}
 
 	fmt.Println()
-	ui.YellowText.Println("💡 Tip: Ejecuta 'kolyn init' para agregar contexto de kolyn al Agent.md")
+	ui.YellowText.Println("💡 Tip: 'kolyn up' para levantar servicios Docker")
 	fmt.Println()
 }
 
