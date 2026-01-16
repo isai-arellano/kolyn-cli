@@ -1,0 +1,49 @@
+# Binarios compilados
+kolyn
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Archivos de test
+*.test
+*.out
+
+# Output del compilador Go
+*.o
+*.a
+
+# Dependencias de Go
+/vendor/
+
+# Archivos temporales
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDEs y editores
+.idea/
+.vscode/
+*.iml
+*.code-workspace
+
+# Archivos de configuración local
+.env
+.env.local
+
+# Coverage
+*.coverprofile
+coverage.html
+coverage.txt
+
+# Archivos generados por Kolyn
+agents.md
+
+# Logs
+*.log
+
+# Build output
+/dist/
+/build/
