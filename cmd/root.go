@@ -34,6 +34,7 @@ func init() {
 	rootCmd.AddCommand(dockerCmd)
 	dockerCmd.AddCommand(dockerUpCmd)
 	dockerCmd.AddCommand(dockerDownCmd)
+	dockerCmd.AddCommand(dockerListCmd)
 	skillsCmd.AddCommand(skillsPathsCmd)
 	skillsCmd.AddCommand(skillsListCmd)
 }
@@ -52,6 +53,7 @@ func showWelcome() {
 		{"kolyn skills list", "Lista skills y permite ver/editar contenido"},
 		{"kolyn skills paths", "Retorna solo las rutas de skills"},
 		{"kolyn docker up", "Levanta servicios Docker desde templates"},
+		{"kolyn docker list", "Lista servicios Docker y su estado"},
 		{"kolyn docker down", "Detiene servicios Docker levantados"},
 	}
 

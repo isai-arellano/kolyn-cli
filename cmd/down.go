@@ -22,6 +22,16 @@ var dockerDownCmd = &cobra.Command{
 	},
 }
 
+var dockerListCmd = &cobra.Command{
+	Use:     "list",
+	Short:   "Lista servicios Docker",
+	Long:    `Lista todos los servicios Docker configurados y su estado.`,
+	Aliases: []string{"docker-list", "ls"},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDockerListCommand()
+	},
+}
+
 type ServiceInfo struct {
 	Name string
 	Path string
@@ -31,6 +41,47 @@ func readInputFromStdin() string {
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
 	return strings.TrimSpace(input)
+}
+
+func runDockerListCommand() error {
+	homeDir, _ := os.UserHomeDir()
+	dockerDir := filepath.Join(homeDir, "docker")
+
+	services, err := getExistingServices(dockerDir)
+	if err != nil {
+		return fmt.Errorf("error escaneando servicios: %w", err)
+	}
+
+	ui.ShowSection("📋 Servicios Docker")
+
+	if len(services) == 0 {
+		ui.Gray.Println("  No hay servicios configurados en ~/docker/")
+		ui.Gray.Println("  Ejecuta 'kolyn docker up' para crear uno.")
+		return nil
+	}
+
+	runningCount := 0
+
+	fmt.Println()
+	fmt.Printf("  %-35s %s\n", "SERVICIO", "ESTADO")
+	ui.Gray.Println("  " + strings.Repeat("─", 50))
+
+	for _, s := range services {
+		status := getServiceStatus(s.Path)
+		if status == "running" {
+			ui.Green.Printf("  %-35s ● running\n", s.Name)
+			runningCount++
+		} else if status == "stopped" {
+			ui.Gray.Printf("  %-35s ○ stopped\n", s.Name)
+		} else {
+			ui.Yellow.Printf("  %-35s ? unknown\n", s.Name)
+		}
+	}
+
+	fmt.Println()
+	ui.Gray.Printf("  Total: %d servicio(s), %d ejecutándose\n", len(services), runningCount)
+
+	return nil
 }
 
 func runDockerDownCommand() error {
