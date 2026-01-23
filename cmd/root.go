@@ -10,7 +10,7 @@ import (
 
 var (
 	// Version will be set by goreleaser during build
-	Version = "v0.2.0-dev"
+	Version = "v0.2.0"
 	Commit  = "none"
 	Date    = "unknown"
 )
@@ -47,6 +47,7 @@ func init() {
 	rootCmd.AddCommand(skillsCmd)
 	rootCmd.AddCommand(toolsCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(syncCmd)
 
 	toolsCmd.AddCommand(dockerCmd)
@@ -74,7 +75,7 @@ func showWelcome() {
 		{"kolyn skills", "Retorna JSON con skills disponibles para la IA"},
 		{"kolyn skills list", "Lista skills y permite ver/editar contenido"},
 		{"kolyn skills paths", "Retorna solo las rutas de skills"},
-		{"kolyn sync", "Sincroniza skills desde fuentes remotas"},
+		{"kolyn update", "Actualiza kolyn a la última versión disponible"},
 		{"kolyn tools ssh create", "Genera llaves SSH y configura acceso a servidores"},
 		{"kolyn tools docker up", "Levanta servicios Docker desde templates"},
 		{"kolyn tools docker list", "Lista servicios Docker y su estado"},
