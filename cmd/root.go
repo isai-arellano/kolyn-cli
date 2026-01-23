@@ -50,6 +50,8 @@ func init() {
 	rootCmd.AddCommand(syncCmd)
 
 	toolsCmd.AddCommand(dockerCmd)
+	toolsCmd.AddCommand(sshCmd)
+	sshCmd.AddCommand(sshCreateCmd)
 
 	dockerCmd.AddCommand(dockerUpCmd)
 	dockerCmd.AddCommand(dockerDownCmd)
@@ -73,6 +75,7 @@ func showWelcome() {
 		{"kolyn skills list", "Lista skills y permite ver/editar contenido"},
 		{"kolyn skills paths", "Retorna solo las rutas de skills"},
 		{"kolyn sync", "Sincroniza skills desde fuentes remotas"},
+		{"kolyn tools ssh create", "Genera llaves SSH y configura acceso a servidores"},
 		{"kolyn tools docker up", "Levanta servicios Docker desde templates"},
 		{"kolyn tools docker list", "Lista servicios Docker y su estado"},
 		{"kolyn tools docker down", "Detiene servicios Docker levantados"},

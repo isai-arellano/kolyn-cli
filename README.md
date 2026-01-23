@@ -1,103 +1,109 @@
-# Kolyn CLI
+# Kolyn CLI 🚀
 
-Herramienta CLI simple que ayuda a agentes IA con contexto del proyecto y acceso a skills.
+**Orquestador de Desarrollo para la Era de la IA**
 
-## Comandos
+Kolyn es una herramienta CLI diseñada para estandarizar flujos de trabajo en equipos modernos. Actúa como un puente entre desarrolladores y Agentes de IA, inyectando contexto (Skills, Reglas, Roles) y automatizando tareas repetitivas de infraestructura.
 
-```
-kolyn init           Inicializa kolyn y agrega contexto al Agent.md
-kolyn skills         Retorna JSON con skills disponibles para la IA
-kolyn skills list    Lista skills y permite ver/editar contenido
-kolyn skills paths   Retorna solo las rutas de skills
-```
+## 📦 Instalación
 
-## Instalación
-
-### Instalación rápida (Linux/Mac)
+### Instalación Rápida (Mac/Linux)
+El script detecta tu arquitectura, descarga la última versión y la instala en tu PATH.
 
 ```bash
 curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.sh | sh
 ```
 
-### Manual
-
-Descarga el binario desde [Releases](https://github.com/isai-arellano/kolyn-cli/releases) para tu sistema operativo.
-
-### Desde source
-
+### Desde Source (Go)
+Si tienes Go instalado:
 ```bash
 go install github.com/isai-arellano/kolyn-cli@latest
 ```
 
-## Desinstalación
+## 🚀 Getting Started
 
-Para desinstalar Kolyn y limpiar sus archivos de configuración:
-
-```bash
-# Si instalaste usando el script
-curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.sh | sh
-
-# O si tienes el repo clonado:
-./uninstall.sh
-```
-
-## Uso
-
-### Inicializar proyecto
+### 1. Inicializar Proyecto
+Al iniciar un proyecto, Kolyn crea o actualiza el archivo `Agent.md`. Este archivo es el "cerebro" que tu Agente de IA leerá para entender cómo trabajar contigo.
 
 ```bash
-cd tu-proyecto
+cd mi-proyecto
 kolyn init
 ```
 
-Agrega contexto de kolyn al `Agent.md` para que la IA cómo usar los comandos sepa.
-
-### Obtener skills para la IA
-
-```bash
-kolyn skills
-```
-
-Retorna JSON con todas las skills disponibles:
+### 2. Sincronizar Estándares del Equipo (Sync)
+Kolyn permite que todo tu equipo comparta las mismas "Skills" (guías de estilo, arquitecturas, roles). Crea un archivo `.kolyn.json` en la raíz de tu proyecto:
 
 ```json
 {
-  "total_skills": 3,
-  "skills_dir": "/Users/tu-usuario/.kolyn/skills",
-  "skills": [
-    {
-      "name": "commits_y_convenciones",
-      "category": "general",
-      "path": "/Users/tu-usuario/.kolyn/skills/general/commits_y_convenciones.md",
-      "description": "Conventional Commits simplificado"
-    }
+  "project_name": "ecommerce-platform",
+  "skills_sources": [
+    "https://github.com/mi-org/backend-standards"
   ]
 }
 ```
 
-### Modo interactivo
+Luego ejecuta:
+```bash
+kolyn sync
+```
+Esto descargará automáticamente las skills de tu equipo en `~/.kolyn/sources/` y las hará disponibles para la IA.
+
+## 🛠 Herramientas (Tools)
+
+Kolyn incluye un set de navajas suizas para tareas comunes.
+
+### 🐳 Docker Tools
+Levanta infraestructura de desarrollo en segundos sin escribir `docker-compose.yaml` manualmente.
 
 ```bash
-kolyn skills list
+# Levantar un servicio (menú interactivo)
+kolyn tools docker up
+
+# Listar servicios corriendo
+kolyn tools docker list
+
+# Detener un servicio
+kolyn tools docker down
+```
+*Servicios disponibles:* n8n, PostgreSQL, Redis, MongoDB, Next.js Stack, entre otros.
+*Ubicación de datos:* Los volúmenes y archivos persisten en `~/.kolyn/services/`.
+
+### 🔑 SSH Manager
+Genera llaves SSH modernas (Ed25519) y configura tu archivo `~/.ssh/config` automáticamente con una sola línea.
+
+```bash
+# Sintaxis: kolyn tools ssh create <nombre> <ip> [usuario]
+kolyn tools ssh create mi-servidor 192.168.1.50 root
+```
+Esto:
+1. Genera llaves en `~/.ssh/mi-servidor`
+2. Agrega la configuración al `config` de SSH.
+3. (Opcional) Copia la llave pública al servidor remoto.
+
+## 🧠 Comandos de IA (Skills)
+
+Comandos pensados para que los use tu Agente de IA (Windsurf, Cursor, Cline, etc):
+
+*   `kolyn skills paths`: Muestra dónde están los archivos Markdown de contexto (Roles, Reglas, Tech).
+*   `kolyn skills list`: Explorador interactivo de skills para humanos.
+
+## 🗑 Desinstalación
+
+Si decides irte, Kolyn limpia su desorden. El script te preguntará si quieres conservar tus Skills descargadas.
+
+```bash
+curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.sh | sh
 ```
 
-Lista todas las skills y permite ver o editar su contenido con tu editor default.
+## 📂 Estructura de Archivos
 
-## Skills
+Kolyn mantiene tu sistema ordenado guardando todo en `~/.kolyn`:
 
-Las skills se guardan en `~/.kolyn/skills/` organizadas por categoría:
-
-```
-~/.kolyn/skills/
-├── general/
-│   └── commits_y_convenciones.md
-└── web/
-    ├── backend_routehandlers.md
-    ├── database_drizzle.md
-    ├── devops_dokploy.md
-    └── frontend_ui.md
+```text
+~/.kolyn/
+├── services/       # Contenedores Docker y sus volúmenes
+├── skills/         # Skills locales
+└── sources/        # Skills sincronizadas desde Git (Sync)
 ```
 
 ## License
-
 MIT
