@@ -13,14 +13,32 @@ kolyn skills paths   Retorna solo las rutas de skills
 
 ## Instalación
 
+### Instalación rápida (Linux/Mac)
+
 ```bash
-go build -o kolyn
+curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.sh | sh
 ```
 
-O globally:
+### Manual
+
+Descarga el binario desde [Releases](https://github.com/isai-arellano/kolyn-cli/releases) para tu sistema operativo.
+
+### Desde source
 
 ```bash
-go install
+go install github.com/isai-arellano/kolyn-cli@latest
+```
+
+## Desinstalación
+
+Para desinstalar Kolyn y limpiar sus archivos de configuración:
+
+```bash
+# Si instalaste usando el script
+curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.sh | sh
+
+# O si tienes el repo clonado:
+./uninstall.sh
 ```
 
 ## Uso

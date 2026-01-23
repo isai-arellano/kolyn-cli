@@ -4,9 +4,7 @@ import (
 	"fmt"
 )
 
-const version = "v0.1.0"
-
-func ShowBanner() {
+func ShowBanner(version string) {
 	banner := `
 ╔══════════════════════════════════════════════════════════════════╗
 ║                                                                  ║

@@ -1,4 +1,4 @@
-module github.com/yourusername/kolyn
+module github.com/isai-arellano/kolyn-cli
 
 go 1.25.5
 

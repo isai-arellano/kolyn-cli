@@ -1,6 +1,6 @@
 package main
 
-import "github.com/yourusername/kolyn/cmd"
+import "github.com/isai-arellano/kolyn-cli/cmd"
 
 func main() {
 	cmd.Execute()

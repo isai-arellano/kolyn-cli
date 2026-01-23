@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/isai-arellano/kolyn-cli/cmd/ui"
 	"github.com/spf13/cobra"
-	"github.com/yourusername/kolyn/cmd/ui"
 )
 
 var skillsCmd = &cobra.Command{
@@ -67,15 +67,6 @@ func readInput() string {
 	return strings.TrimSpace(input)
 }
 
-// getSkillsDir obtiene el directorio de skills
-func getSkillsDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("error obteniendo directorio home: %w", err)
-	}
-	return filepath.Join(homeDir, ".kolyn", "skills"), nil
-}
-
 // getSkillDescriptionFromFile extrae la descripción de un skill
 func getSkillDescriptionFromFile(content string) string {
 	lines := strings.Split(content, "\n")
@@ -97,72 +88,91 @@ func getSkillDescriptionFromFile(content string) string {
 	return ""
 }
 
+// getSkillsDir obtiene el directorio de skills
+func getSkillsDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("error obteniendo directorio home: %w", err)
+	}
+	return filepath.Join(homeDir, ".kolyn", "skills"), nil
+}
+
+// getSkillsDirs obtiene todos los directorios donde buscar skills (local y sources)
+func getSkillsDirs() ([]string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("error obteniendo directorio home: %w", err)
+	}
+
+	dirs := []string{}
+
+	// 1. Skills locales (~/.kolyn/skills)
+	localSkills := filepath.Join(homeDir, ".kolyn", "skills")
+	dirs = append(dirs, localSkills)
+
+	// 2. Skills sincronizados (~/.kolyn/sources/*)
+	sourcesDir := filepath.Join(homeDir, ".kolyn", "sources")
+	if entries, err := os.ReadDir(sourcesDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				dirs = append(dirs, filepath.Join(sourcesDir, entry.Name()))
+			}
+		}
+	}
+
+	return dirs, nil
+}
+
 // getSkillsJSON retorna todas las skills en formato JSON
 func getSkillsJSON() error {
-	skillsDir, err := getSkillsDir()
+	skillDirs, err := getSkillsDirs()
 	if err != nil {
 		return err
 	}
 
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		result := SkillsJSON{
-			TotalSkills: 0,
-			SkillsDir:   skillsDir,
-			Skills:      []SkillInfo{},
-		}
-		jsonData, _ := json.MarshalIndent(result, "", "  ")
-		fmt.Println(string(jsonData))
-		return nil
-	}
-
-	categories, err := os.ReadDir(skillsDir)
-	if err != nil {
-		return fmt.Errorf("error leyendo directorio de skills: %w", err)
-	}
-
-	skills := []SkillInfo{}
+	allSkills := []SkillInfo{}
 	totalSkills := 0
 
-	for _, category := range categories {
-		if !category.IsDir() {
+	for _, baseDir := range skillDirs {
+		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 			continue
 		}
 
-		categoryPath := filepath.Join(skillsDir, category.Name())
-		files, err := os.ReadDir(categoryPath)
+		// Caminar recursivamente para encontrar .md
+		err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
+				// Calcular categoría relativa al baseDir
+				relPath, _ := filepath.Rel(baseDir, path)
+				category := filepath.Dir(relPath)
+				if category == "." {
+					category = "root"
+				}
+
+				skillName := strings.TrimSuffix(info.Name(), ".md")
+				content, _ := os.ReadFile(path)
+
+				allSkills = append(allSkills, SkillInfo{
+					Name:        skillName,
+					Category:    category,
+					Path:        path,
+					Description: getSkillDescriptionFromFile(string(content)),
+				})
+				totalSkills++
+			}
+			return nil
+		})
 		if err != nil {
 			continue
-		}
-
-		for _, file := range files {
-			if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
-				continue
-			}
-
-			skillName := strings.TrimSuffix(file.Name(), ".md")
-			fullPath := filepath.Join(categoryPath, file.Name())
-
-			content, err := os.ReadFile(fullPath)
-			description := ""
-			if err == nil {
-				description = getSkillDescriptionFromFile(string(content))
-			}
-
-			skills = append(skills, SkillInfo{
-				Name:        skillName,
-				Category:    category.Name(),
-				Path:        fullPath,
-				Description: description,
-			})
-
-			totalSkills++
 		}
 	}
 
 	result := SkillsJSON{
 		TotalSkills: totalSkills,
-		SkillsDir:   skillsDir,
-		Skills:      skills,
+		SkillsDir:   "combined",
+		Skills:      allSkills,
 	}
 
 	jsonData, err := json.MarshalIndent(result, "", "  ")
@@ -176,88 +186,64 @@ func getSkillsJSON() error {
 
 // getSkillsPaths retorna solo las rutas de las skills
 func getSkillsPaths() error {
-	skillsDir, err := getSkillsDir()
+	skillDirs, err := getSkillsDirs()
 	if err != nil {
 		return err
 	}
 
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		return nil
-	}
-
-	categories, err := os.ReadDir(skillsDir)
-	if err != nil {
-		return fmt.Errorf("error leyendo directorio de skills: %w", err)
-	}
-
-	for _, category := range categories {
-		if !category.IsDir() {
+	for _, baseDir := range skillDirs {
+		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 			continue
 		}
 
-		categoryPath := filepath.Join(skillsDir, category.Name())
-		files, err := os.ReadDir(categoryPath)
-		if err != nil {
-			continue
-		}
-
-		for _, file := range files {
-			if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
-				continue
+		filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
+				fmt.Println(path)
 			}
-
-			fullPath := filepath.Join(categoryPath, file.Name())
-			fmt.Println(fullPath)
-		}
+			return nil
+		})
 	}
-
 	return nil
 }
 
 // runSkillsList muestra lista interactiva de skills
 func runSkillsList() error {
-	skillsDir, err := getSkillsDir()
+	skillDirs, err := getSkillsDirs()
 	if err != nil {
 		return err
 	}
 
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		fmt.Println("No se encontró el directorio de skills:", skillsDir)
-		return nil
-	}
-
-	// Recopilar todas las skills
 	var allSkills []SkillInfo
-	categories, _ := os.ReadDir(skillsDir)
 
-	for _, category := range categories {
-		if !category.IsDir() {
+	for _, baseDir := range skillDirs {
+		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 			continue
 		}
 
-		categoryPath := filepath.Join(skillsDir, category.Name())
-		files, _ := os.ReadDir(categoryPath)
+		filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
+				relPath, _ := filepath.Rel(baseDir, path)
+				category := filepath.Dir(relPath)
+				if category == "." {
+					category = "root"
+				}
 
-		for _, file := range files {
-			if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
-				continue
+				skillName := strings.TrimSuffix(info.Name(), ".md")
+				content, _ := os.ReadFile(path)
+
+				allSkills = append(allSkills, SkillInfo{
+					Name:        skillName,
+					Category:    category,
+					Path:        path,
+					Description: getSkillDescriptionFromFile(string(content)),
+				})
 			}
-
-			skillName := strings.TrimSuffix(file.Name(), ".md")
-			fullPath := filepath.Join(categoryPath, file.Name())
-			content, _ := os.ReadFile(fullPath)
-
-			allSkills = append(allSkills, SkillInfo{
-				Name:        skillName,
-				Category:    category.Name(),
-				Path:        fullPath,
-				Description: getSkillDescriptionFromFile(string(content)),
-			})
-		}
+			return nil
+		})
 	}
 
 	if len(allSkills) == 0 {
-		fmt.Println("No hay skills disponibles")
+		fmt.Println("No hay skills disponibles en ~/.kolyn/skills ni en ~/.kolyn/sources")
 		return nil
 	}
 
@@ -374,41 +360,24 @@ func editSkillContent(skill SkillInfo) error {
 
 // GetAllSkillsPaths retorna todas las rutas de skills (para uso interno)
 func GetAllSkillsPaths() ([]string, error) {
-	skillsDir, err := getSkillsDir()
+	skillDirs, err := getSkillsDirs()
 	if err != nil {
 		return nil, err
 	}
 
 	var paths []string
 
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		return paths, nil
-	}
-
-	categories, err := os.ReadDir(skillsDir)
-	if err != nil {
-		return nil, fmt.Errorf("error leyendo directorio de skills: %w", err)
-	}
-
-	for _, category := range categories {
-		if !category.IsDir() {
+	for _, baseDir := range skillDirs {
+		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 			continue
 		}
 
-		categoryPath := filepath.Join(skillsDir, category.Name())
-		files, err := os.ReadDir(categoryPath)
-		if err != nil {
-			continue
-		}
-
-		for _, file := range files {
-			if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
-				continue
+		filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
+				paths = append(paths, path)
 			}
-
-			fullPath := filepath.Join(categoryPath, file.Name())
-			paths = append(paths, fullPath)
-		}
+			return nil
+		})
 	}
 
 	return paths, nil

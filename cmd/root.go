@@ -4,8 +4,15 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/isai-arellano/kolyn-cli/cmd/ui"
 	"github.com/spf13/cobra"
-	"github.com/yourusername/kolyn/cmd/ui"
+)
+
+var (
+	// Version will be set by goreleaser during build
+	Version = "v0.2.0-dev"
+	Commit  = "none"
+	Date    = "unknown"
 )
 
 var rootCmd = &cobra.Command{
@@ -20,6 +27,13 @@ Usa 'kolyn <comando>' para interactuar.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		showWelcome()
 	},
+	Version: Version,
+}
+
+var toolsCmd = &cobra.Command{
+	Use:   "tools",
+	Short: "Herramientas de utilidad (Docker, etc)",
+	Long:  `Colección de herramientas útiles para el desarrollo.`,
 }
 
 var dockerCmd = &cobra.Command{
@@ -31,16 +45,22 @@ var dockerCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(skillsCmd)
-	rootCmd.AddCommand(dockerCmd)
+	rootCmd.AddCommand(toolsCmd)
+	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(syncCmd)
+
+	toolsCmd.AddCommand(dockerCmd)
+
 	dockerCmd.AddCommand(dockerUpCmd)
 	dockerCmd.AddCommand(dockerDownCmd)
 	dockerCmd.AddCommand(dockerListCmd)
+
 	skillsCmd.AddCommand(skillsPathsCmd)
 	skillsCmd.AddCommand(skillsListCmd)
 }
 
 func showWelcome() {
-	ui.ShowBanner()
+	ui.ShowBanner(Version)
 
 	ui.Cyan.Println("📋 Comandos disponibles:")
 
@@ -52,18 +72,19 @@ func showWelcome() {
 		{"kolyn skills", "Retorna JSON con skills disponibles para la IA"},
 		{"kolyn skills list", "Lista skills y permite ver/editar contenido"},
 		{"kolyn skills paths", "Retorna solo las rutas de skills"},
-		{"kolyn docker up", "Levanta servicios Docker desde templates"},
-		{"kolyn docker list", "Lista servicios Docker y su estado"},
-		{"kolyn docker down", "Detiene servicios Docker levantados"},
+		{"kolyn sync", "Sincroniza skills desde fuentes remotas"},
+		{"kolyn tools docker up", "Levanta servicios Docker desde templates"},
+		{"kolyn tools docker list", "Lista servicios Docker y su estado"},
+		{"kolyn tools docker down", "Detiene servicios Docker levantados"},
 	}
 
 	for _, cmd := range commands {
-		ui.Blue.Printf("  🔹 %-20s", cmd.name)
+		ui.Blue.Printf("  🔹 %-25s", cmd.name)
 		ui.WhiteText.Printf(" - %s\n", cmd.description)
 	}
 
 	fmt.Println()
-	ui.YellowText.Println("💡 Tip: 'kolyn docker up' para levantar servicios Docker")
+	ui.YellowText.Println("💡 Tip: 'kolyn tools docker up' para levantar servicios Docker")
 	fmt.Println()
 }
 

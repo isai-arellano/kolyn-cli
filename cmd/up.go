@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/isai-arellano/kolyn-cli/cmd/ui"
 	"github.com/spf13/cobra"
-	"github.com/yourusername/kolyn/cmd/ui"
 )
 
 var dockerUpCmd = &cobra.Command{
@@ -153,7 +153,7 @@ func runDockerUpCommand() error {
 
 func startService(t ComposeTemplate, allTemplates []ComposeTemplate) error {
 	homeDir, _ := os.UserHomeDir()
-	dockerDir := filepath.Join(homeDir, "docker", t.Service)
+	dockerDir := filepath.Join(homeDir, ".kolyn", "services", t.Service)
 
 	if _, err := os.Stat(dockerDir); err == nil {
 		ui.PrintWarning("El servicio '%s' ya existe en: %s", t.Name, dockerDir)

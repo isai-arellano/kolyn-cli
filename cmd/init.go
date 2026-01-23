@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/isai-arellano/kolyn-cli/cmd/ui"
 	"github.com/spf13/cobra"
-	"github.com/yourusername/kolyn/cmd/ui"
 )
 
 var initCmd = &cobra.Command{
@@ -21,18 +21,23 @@ var initCmd = &cobra.Command{
 }
 
 const kolynContextTemplate = `
-
 ═══════════════════════════════════════════════════════════════════════
-KOLYN
+KOLYN CONTEXT & TOOLS
 ═══════════════════════════════════════════════════════════════════════
 
-kolyn init           → Inicializa kolyn en el proyecto
-kolyn skills         → JSON con skills disponibles para la IA
-kolyn skills list    → Lista skills y permite ver/editar contenido
-kolyn skills paths   → Retorna solo las rutas de skills
-kolyn docker up      → Levanta servicios Docker (n8n, postgres, etc.)
-kolyn docker list    → Lista servicios Docker y su estado
-kolyn docker down    → Detiene servicios Docker levantados
+⚠️ TOKEN ECONOMY NOTICE:
+No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice y lee SOLO el archivo específico que necesites para la tarea actual.
+
+🛠 COMMANDS:
+• kolyn skills paths        → Muestra rutas de skills (Índice Maestro)
+• kolyn tools docker list   → Ver servicios corriendo
+• kolyn tools docker up     → Levantar infraestructura (DBs, n8n, etc)
+
+📌 SKILL MAP:
+• /skills/roles/     → Personas (Architect, Planner, QA)
+• /skills/rules/     → Reglas estrictas (Security, Naming)
+• /skills/tech/      → Guías técnicas (React, Go, Docker)
+• /skills/workflows/ → Procesos (Git Flow, Releases)
 
 ═══════════════════════════════════════════════════════════════════════
 `

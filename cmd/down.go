@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/isai-arellano/kolyn-cli/cmd/ui"
 	"github.com/spf13/cobra"
-	"github.com/yourusername/kolyn/cmd/ui"
 )
 
 var dockerDownCmd = &cobra.Command{
@@ -45,7 +45,7 @@ func readInputFromStdin() string {
 
 func runDockerListCommand() error {
 	homeDir, _ := os.UserHomeDir()
-	dockerDir := filepath.Join(homeDir, "docker")
+	dockerDir := filepath.Join(homeDir, ".kolyn", "services")
 
 	services, err := getExistingServices(dockerDir)
 	if err != nil {
@@ -55,7 +55,7 @@ func runDockerListCommand() error {
 	ui.ShowSection("📋 Servicios Docker")
 
 	if len(services) == 0 {
-		ui.Gray.Println("  No hay servicios configurados en ~/docker/")
+		ui.Gray.Println("  No hay servicios configurados en ~/.kolyn/services/")
 		ui.Gray.Println("  Ejecuta 'kolyn docker up' para crear uno.")
 		return nil
 	}
@@ -86,7 +86,7 @@ func runDockerListCommand() error {
 
 func runDockerDownCommand() error {
 	homeDir, _ := os.UserHomeDir()
-	dockerDir := filepath.Join(homeDir, "docker")
+	dockerDir := filepath.Join(homeDir, ".kolyn", "services")
 
 	services, err := getExistingServices(dockerDir)
 	if err != nil {
@@ -94,7 +94,7 @@ func runDockerDownCommand() error {
 	}
 
 	if len(services) == 0 {
-		ui.PrintInfo("No hay servicios levantados en ~/docker/")
+		ui.PrintInfo("No hay servicios levantados en ~/.kolyn/services/")
 		return nil
 	}
 
