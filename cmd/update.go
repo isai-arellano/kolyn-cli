@@ -25,18 +25,29 @@ var updateCmd = &cobra.Command{
 func runUpdate() error {
 	ui.ShowSection("🔄 Kolyn Update")
 
-	// 1. Detectar versión actual y sistema
 	ui.PrintStep("Buscando actualizaciones...")
 
-	// URL del script de instalación oficial
+	if runtime.GOOS == "windows" {
+		return runUpdateWindows()
+	}
+
+	// URL del script de instalación oficial (Linux/Mac)
 	installScriptURL := "https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.sh"
 
-	// 2. Descargar y ejecutar el script de instalación
-	// Esta es la forma más segura y multiplataforma, ya que el script maneja
-	// la detección de arquitectura, descarga del binario correcto y permisos.
+	return downloadAndRunScript(installScriptURL, "/bin/sh")
+}
 
+func runUpdateWindows() error {
+	// URL del script de instalación oficial (Windows)
+	installScriptURL := "https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.ps1"
+
+	// En Windows usamos powershell
+	return downloadAndRunScript(installScriptURL, "powershell")
+}
+
+func downloadAndRunScript(url, shell string) error {
 	ui.PrintStep("Descargando instalador...")
-	resp, err := http.Get(installScriptURL)
+	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("error conectando con GitHub: %w", err)
 	}
@@ -46,34 +57,41 @@ func runUpdate() error {
 		return fmt.Errorf("error descargando script (status: %d)", resp.StatusCode)
 	}
 
+	// Extension depende del OS
+	ext := ".sh"
+	if runtime.GOOS == "windows" {
+		ext = ".ps1"
+	}
+
 	// Guardar script temporal
-	tmpScript, err := os.CreateTemp("", "kolyn-install-*.sh")
+	tmpScript, err := os.CreateTemp("", "kolyn-install-*"+ext)
 	if err != nil {
 		return fmt.Errorf("error creando archivo temporal: %w", err)
 	}
-	defer os.Remove(tmpScript.Name())
+	defer os.Remove(tmpScript.Name()) // Clean up
 
+	// Copiar contenido
 	if _, err := io.Copy(tmpScript, resp.Body); err != nil {
 		return fmt.Errorf("error guardando script: %w", err)
 	}
 	tmpScript.Close()
 
-	// Dar permisos de ejecución
-	if err := os.Chmod(tmpScript.Name(), 0755); err != nil {
-		return fmt.Errorf("error dando permisos: %w", err)
-	}
+	// Dar permisos (solo relevante en unix, pero no daña en win)
+	os.Chmod(tmpScript.Name(), 0755)
 
 	ui.PrintStep("Instalando nueva versión...")
 
 	// Ejecutar script
-	cmd := exec.Command("/bin/sh", tmpScript.Name())
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// En Windows necesitamos pasar argumentos específicos para bypass de políticas
+		cmd = exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", tmpScript.Name())
+	} else {
+		cmd = exec.Command(shell, tmpScript.Name())
+	}
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
-	// En Windows podríamos necesitar powershell, pero por ahora asumimos sh/bash (Linux/Mac)
-	if runtime.GOOS == "windows" {
-		ui.PrintWarning("La actualización automática en Windows requiere Git Bash o WSL.")
-	}
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error durante la instalación: %w", err)
@@ -82,11 +100,13 @@ func runUpdate() error {
 	ui.Separator()
 	ui.PrintSuccess("¡Kolyn se ha actualizado correctamente!")
 
-	// Verificar nueva versión
+	// Verificar nueva versión (ignorar error si falla por PATH aun no actualizado en la sesión)
 	verifyCmd := exec.Command("kolyn", "version")
 	output, _ := verifyCmd.CombinedOutput()
 	if len(output) > 0 {
 		fmt.Println(strings.TrimSpace(string(output)))
+	} else if runtime.GOOS == "windows" {
+		ui.PrintInfo("Reinicia tu terminal para usar la nueva versión.")
 	}
 
 	return nil
