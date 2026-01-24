@@ -115,6 +115,9 @@ func getDefaultTemplates() []ComposeTemplate {
 		{"postgres-pgadmin", "PostgreSQL + pgAdmin", "postgres-pgadmin", "5050"},
 		{"redis", "Cache en memoria", "redis", "6379"},
 		{"mongodb", "Base de datos MongoDB", "mongodb", "27017"},
+		{"qdrant", "Vector Database para IA", "qdrant", "6333"},
+		{"ollama", "LLMs Locales (Llama 3, Mistral)", "ollama", "11434"},
+		{"minio", "S3 Storage Local", "minio", "9000"},
 		{"nextjs-postgres", "Next.js + PostgreSQL + Redis", "nextjs-postgres", "3000"},
 	}
 }
@@ -401,6 +404,67 @@ services:
 
 volumes:
   mongo_data:
+`
+	case "qdrant":
+		return `version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  qdrant_data:
+`
+	case "ollama":
+		return `version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Habilitar GPU si es necesario descomentando abajo:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  ollama_data:
+`
+	case "minio":
+		return `version: '3.8'
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  minio_data:
 `
 	case "nextjs-postgres":
 		return `version: '3.8'
