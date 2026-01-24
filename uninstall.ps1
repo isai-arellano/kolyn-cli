@@ -106,6 +106,7 @@ if ($response -match "^(y|yes|s|si)$") {
 }
 
 Write-Host ""
-Write-Host "✓ Kolyn has been uninstalled successfully!" -ForegroundColor $Green
+Write-Host "[OK] Kolyn has been uninstalled successfully!" -ForegroundColor $Green
 Write-Host "Thank you for using Kolyn CLI."
 Write-Host ""
+exit 0
