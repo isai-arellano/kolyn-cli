@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/isai-arellano/kolyn-cli/cmd/ui"
 	"github.com/spf13/cobra"
@@ -18,42 +20,50 @@ var updateCmd = &cobra.Command{
 	Short: "Actualiza kolyn a la última versión disponible",
 	Long:  `Descarga e instala la última versión estable de kolyn desde GitHub Releases.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runUpdate()
+		return runUpdate(cmd.Context())
 	},
 }
 
-func runUpdate() error {
+func runUpdate(ctx context.Context) error {
 	ui.ShowSection("🔄 Kolyn Update")
 
 	ui.PrintStep("Buscando actualizaciones...")
 
 	if runtime.GOOS == "windows" {
-		return runUpdateWindows()
+		return runUpdateWindows(ctx)
 	}
 
 	// URL del script de instalación oficial (Linux/Mac)
 	installScriptURL := "https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.sh"
 
-	return downloadAndRunScript(installScriptURL, "/bin/sh")
+	return downloadAndRunScript(ctx, installScriptURL, "/bin/sh")
 }
 
-func runUpdateWindows() error {
+func runUpdateWindows(ctx context.Context) error {
 	// URL del script de instalación oficial (Windows)
 	installScriptURL := "https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.ps1"
 
 	// En Windows usamos powershell
-	return downloadAndRunScript(installScriptURL, "powershell")
+	return downloadAndRunScript(ctx, installScriptURL, "powershell")
 }
 
-func downloadAndRunScript(url, shell string) error {
+func downloadAndRunScript(ctx context.Context, url, shell string) error {
 	ui.PrintStep("Descargando instalador...")
-	resp, err := http.Get(url)
+
+	// Use Context for HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("error creando petición HTTP: %w", err)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error conectando con GitHub: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("error descargando script (status: %d)", resp.StatusCode)
 	}
 
@@ -68,16 +78,26 @@ func downloadAndRunScript(url, shell string) error {
 	if err != nil {
 		return fmt.Errorf("error creando archivo temporal: %w", err)
 	}
-	defer os.Remove(tmpScript.Name()) // Clean up
+	defer func() {
+		if err := os.Remove(tmpScript.Name()); err != nil {
+			// Log error if cleanup fails, but don't fail the operation
+			fmt.Fprintf(os.Stderr, "warning: failed to cleanup temp file: %v\n", err)
+		}
+	}()
 
 	// Copiar contenido
 	if _, err := io.Copy(tmpScript, resp.Body); err != nil {
 		return fmt.Errorf("error guardando script: %w", err)
 	}
-	tmpScript.Close()
+	// Close explicitly to ensure flush
+	if err := tmpScript.Close(); err != nil {
+		return fmt.Errorf("error cerrando archivo temporal: %w", err)
+	}
 
 	// Dar permisos (solo relevante en unix, pero no daña en win)
-	os.Chmod(tmpScript.Name(), 0755)
+	if err := os.Chmod(tmpScript.Name(), 0755); err != nil {
+		return fmt.Errorf("error asignando permisos de ejecución: %w", err)
+	}
 
 	ui.PrintStep("Instalando nueva versión...")
 
@@ -85,9 +105,9 @@ func downloadAndRunScript(url, shell string) error {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		// En Windows necesitamos pasar argumentos específicos para bypass de políticas
-		cmd = exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", tmpScript.Name())
+		cmd = exec.CommandContext(ctx, "powershell", "-ExecutionPolicy", "Bypass", "-File", tmpScript.Name())
 	} else {
-		cmd = exec.Command(shell, tmpScript.Name())
+		cmd = exec.CommandContext(ctx, shell, tmpScript.Name())
 	}
 
 	cmd.Stdout = os.Stdout
@@ -101,9 +121,9 @@ func downloadAndRunScript(url, shell string) error {
 	ui.PrintSuccess("¡Kolyn se ha actualizado correctamente!")
 
 	// Verificar nueva versión (ignorar error si falla por PATH aun no actualizado en la sesión)
-	verifyCmd := exec.Command("kolyn", "version")
-	output, _ := verifyCmd.CombinedOutput()
-	if len(output) > 0 {
+	verifyCmd := exec.CommandContext(ctx, "kolyn", "version")
+	output, err := verifyCmd.CombinedOutput()
+	if err == nil && len(output) > 0 {
 		fmt.Println(strings.TrimSpace(string(output)))
 	} else if runtime.GOOS == "windows" {
 		ui.PrintInfo("Reinicia tu terminal para usar la nueva versión.")

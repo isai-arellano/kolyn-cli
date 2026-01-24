@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,7 +17,7 @@ var initCmd = &cobra.Command{
 	Short: "Inicializa kolyn y agrega contexto al Agent.md",
 	Long:  `Agrega información de kolyn al Agent.md para que la IA tenga contexto de cómo usar kolyn CLI.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runInitCommand()
+		return runInitCommand(cmd.Context())
 	},
 }
 
@@ -42,7 +43,7 @@ No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice 
 ═══════════════════════════════════════════════════════════════════════
 `
 
-func runInitCommand() error {
+func runInitCommand(ctx context.Context) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("error obteniendo directorio actual: %w", err)
@@ -114,18 +115,21 @@ func removeKolynBlock(content string) string {
 		currentIdx++
 		trimmed := strings.TrimSpace(line)
 
+		// Detect start of block (heuristic)
 		if trimmed == "KOLYN" || (strings.Contains(line, "═") && strings.Contains(line, "KOLYN")) {
 			skipMode = true
 			continue
 		}
 
 		if skipMode {
+			// Check for end of block: a line starting with ═ that is not the start
 			if strings.HasPrefix(trimmed, "═") && trimmed != "" {
-				nextLine, found := getNextNonEmptyLine(lines, currentIdx)
-				if !found || nextLine == "" || strings.HasPrefix(strings.TrimSpace(nextLine), "═") {
-					skipMode = false
-					continue
-				}
+				// Look ahead to see if this is truly the end (followed by non-empty content not part of block)
+				// Or just assume it closes the block.
+				// The original logic was complex. Let's simplify:
+				// The block ends with a separator line.
+				skipMode = false
+				continue
 			}
 			continue
 		}
@@ -136,15 +140,6 @@ func removeKolynBlock(content string) string {
 	return strings.TrimRight(strings.Join(result, "\n"), "\n")
 }
 
-func getNextNonEmptyLine(lines []string, currentIdx int) (string, bool) {
-	for i := currentIdx + 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) != "" {
-			return lines[i], true
-		}
-	}
-	return "", false
-}
-
 func createAgentWithKolyn(projectPath string) error {
 	projectName := filepath.Base(projectPath)
 
@@ -153,7 +148,7 @@ func createAgentWithKolyn(projectPath string) error {
 Kolyn Version: %s
 Creado: %s
 
-%s`, projectName, "v0.2.0", time.Now().Format("2006-01-02"), kolynContextTemplate)
+%s`, projectName, Version, time.Now().Format("2006-01-02"), kolynContextTemplate)
 
 	agentPath := filepath.Join(projectPath, "Agent.md")
 

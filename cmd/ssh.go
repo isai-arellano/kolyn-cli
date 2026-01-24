@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,11 +34,11 @@ Ejemplo:
 		if len(args) > 2 {
 			user = args[2]
 		}
-		return runSshCreate(name, ip, user)
+		return runSshCreate(cmd.Context(), name, ip, user)
 	},
 }
 
-func runSshCreate(name, ip, user string) error {
+func runSshCreate(ctx context.Context, name, ip, user string) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("error obteniendo home: %w", err)
@@ -56,9 +58,9 @@ func runSshCreate(name, ip, user string) error {
 
 	// 2. Generar llave ED25519
 	ui.PrintStep("Generando par de llaves ED25519...")
-	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-C", fmt.Sprintf("kolyn-%s", name), "-N", "")
+	cmd := exec.CommandContext(ctx, "ssh-keygen", "-t", "ed25519", "-f", keyPath, "-C", fmt.Sprintf("kolyn-%s", name), "-N", "")
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("error generando llave: %s", string(output))
+		return fmt.Errorf("error generando llave: %s: %w", string(output), err)
 	}
 	ui.PrintSuccess("Llaves generadas en: %s", keyPath)
 
@@ -90,13 +92,16 @@ Host %s
 	ui.YellowText.Printf("¿Deseas copiar la llave pública al servidor %s? [y/N]: ", ip)
 	fmt.Print("> ")
 
-	var response string
-	fmt.Scanln(&response)
+	reader := bufio.NewReader(os.Stdin)
+	response, err := readInput(reader)
+	if err != nil {
+		return fmt.Errorf("error leyendo entrada: %w", err)
+	}
 
 	if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" || strings.ToLower(response) == "s" || strings.ToLower(response) == "si" {
 		ui.PrintStep("Copiando llave pública (te pedirá la contraseña del servidor)...")
 
-		copyCmd := exec.Command("ssh-copy-id", "-i", keyPath+".pub", fmt.Sprintf("%s@%s", user, ip))
+		copyCmd := exec.CommandContext(ctx, "ssh-copy-id", "-i", keyPath+".pub", fmt.Sprintf("%s@%s", user, ip))
 		copyCmd.Stdin = os.Stdin
 		copyCmd.Stdout = os.Stdout
 		copyCmd.Stderr = os.Stderr

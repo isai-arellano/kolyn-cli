@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,7 +19,7 @@ var dockerDownCmd = &cobra.Command{
 	Long:    `Detiene y elimina los contenedores de servicios Docker levantados con kolyn docker up.`,
 	Aliases: []string{"docker-down"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDockerDownCommand()
+		return runDockerDownCommand(cmd.Context())
 	},
 }
 
@@ -28,7 +29,7 @@ var dockerListCmd = &cobra.Command{
 	Long:    `Lista todos los servicios Docker configurados y su estado.`,
 	Aliases: []string{"docker-list", "ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDockerListCommand()
+		return runDockerListCommand(cmd.Context())
 	},
 }
 
@@ -37,14 +38,11 @@ type ServiceInfo struct {
 	Path string
 }
 
-func readInputFromStdin() string {
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	return strings.TrimSpace(input)
-}
-
-func runDockerListCommand() error {
-	homeDir, _ := os.UserHomeDir()
+func runDockerListCommand(ctx context.Context) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("error obteniendo home dir: %w", err)
+	}
 	dockerDir := filepath.Join(homeDir, ".kolyn", "services")
 
 	services, err := getExistingServices(dockerDir)
@@ -67,7 +65,7 @@ func runDockerListCommand() error {
 	ui.Gray.Println("  " + strings.Repeat("─", 50))
 
 	for _, s := range services {
-		status := getServiceStatus(s.Path)
+		status := getServiceStatus(ctx, s.Path)
 		if status == "running" {
 			ui.Green.Printf("  %-35s ● running\n", s.Name)
 			runningCount++
@@ -84,8 +82,11 @@ func runDockerListCommand() error {
 	return nil
 }
 
-func runDockerDownCommand() error {
-	homeDir, _ := os.UserHomeDir()
+func runDockerDownCommand(ctx context.Context) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("error obteniendo home dir: %w", err)
+	}
 	dockerDir := filepath.Join(homeDir, ".kolyn", "services")
 
 	services, err := getExistingServices(dockerDir)
@@ -103,7 +104,7 @@ func runDockerDownCommand() error {
 	fmt.Println("Servicios disponibles:\n")
 
 	for i, s := range services {
-		status := getServiceStatus(s.Path)
+		status := getServiceStatus(ctx, s.Path)
 		if status == "running" {
 			ui.Green.Printf("  %d. %-30s [RUNNING]\n", i+1, s.Name)
 		} else {
@@ -114,7 +115,12 @@ func runDockerDownCommand() error {
 	fmt.Println()
 
 	fmt.Print("Selecciona servicio a detener: ")
-	selection := readInputFromStdin()
+
+	reader := bufio.NewReader(os.Stdin)
+	selection, err := readInput(reader)
+	if err != nil {
+		return err
+	}
 
 	if selection == "0" || selection == "" {
 		ui.PrintInfo("Operación cancelada")
@@ -122,14 +128,18 @@ func runDockerDownCommand() error {
 	}
 
 	var idx int
-	fmt.Sscan(selection, &idx)
+	if _, err := fmt.Sscan(selection, &idx); err != nil {
+		ui.PrintWarning("Selección inválida")
+		return nil
+	}
+
 	if idx < 1 || idx > len(services) {
 		ui.PrintWarning("Selección inválida")
 		return nil
 	}
 
 	service := services[idx-1]
-	return stopService(service)
+	return stopService(ctx, service)
 }
 
 func getExistingServices(basePath string) ([]ServiceInfo, error) {
@@ -137,6 +147,10 @@ func getExistingServices(basePath string) ([]ServiceInfo, error) {
 
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
+		// If dir doesn't exist, just return empty list
+		if os.IsNotExist(err) {
+			return services, nil
+		}
 		return services, nil
 	}
 
@@ -151,7 +165,13 @@ func getExistingServices(basePath string) ([]ServiceInfo, error) {
 		if _, err := os.Stat(composePath); err == nil {
 			cleanName := entry.Name()
 			cleanName = strings.ReplaceAll(cleanName, "-", " ")
-			cleanName = strings.Title(cleanName)
+			// Title casing is deprecated in newer Go but still standard library.
+			// golang.org/x/text/cases is better but external. Staying with strings.Title for now or custom.
+			// Actually strings.Title is deprecated since Go 1.18. Let's use simple logic.
+			if len(cleanName) > 0 {
+				cleanName = strings.ToUpper(cleanName[:1]) + cleanName[1:]
+			}
+
 			services = append(services, ServiceInfo{
 				Name: cleanName,
 				Path: servicePath,
@@ -162,8 +182,8 @@ func getExistingServices(basePath string) ([]ServiceInfo, error) {
 	return services, nil
 }
 
-func getServiceStatus(servicePath string) string {
-	cmd := exec.Command("docker", "compose", "ps", "-q")
+func getServiceStatus(ctx context.Context, servicePath string) string {
+	cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "-q")
 	cmd.Dir = servicePath
 	output, err := cmd.Output()
 	if err != nil {
@@ -175,7 +195,7 @@ func getServiceStatus(servicePath string) string {
 		return "stopped"
 	}
 
-	checkCmd := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", containerID)
+	checkCmd := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Running}}", containerID)
 	checkCmd.Dir = servicePath
 	statusOutput, err := checkCmd.Output()
 	if err != nil {
@@ -188,7 +208,7 @@ func getServiceStatus(servicePath string) string {
 	return "stopped"
 }
 
-func stopService(s ServiceInfo) error {
+func stopService(ctx context.Context, s ServiceInfo) error {
 	composePath := filepath.Join(s.Path, "docker-compose.yml")
 	if _, err := os.Stat(composePath); os.IsNotExist(err) {
 		ui.PrintWarning("No se encontró docker-compose.yml")
@@ -197,7 +217,7 @@ func stopService(s ServiceInfo) error {
 
 	ui.PrintStep("Deteniendo servicio '%s'...", s.Name)
 
-	cmd := exec.Command("docker", "compose", "down", "-v")
+	cmd := exec.CommandContext(ctx, "docker", "compose", "down", "-v")
 	cmd.Dir = s.Path
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

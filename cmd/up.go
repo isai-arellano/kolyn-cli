@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,7 +19,7 @@ var dockerUpCmd = &cobra.Command{
 	Long:    `Crea y levanta servicios Docker desde templates locales (~/.kolyn/templates).`,
 	Aliases: []string{"docker-up"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDockerUpCommand()
+		return runDockerUpCommand(cmd.Context())
 	},
 }
 
@@ -29,14 +31,21 @@ type ComposeTemplate struct {
 	Content     string
 }
 
-func getTemplates() []ComposeTemplate {
-	homeDir, _ := os.UserHomeDir()
+func getTemplates() ([]ComposeTemplate, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("error obteniendo home dir: %w", err)
+	}
 	templatesDir := filepath.Join(homeDir, ".kolyn", "templates")
 
 	// 1. Inicializar directorio y defaults si no existe
 	if _, err := os.Stat(templatesDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(templatesDir, 0755); err == nil {
-			writeDefaultTemplates(templatesDir)
+			if err := writeDefaultTemplates(templatesDir); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, fmt.Errorf("error creando directorio templates: %w", err)
 		}
 	}
 
@@ -44,7 +53,7 @@ func getTemplates() []ComposeTemplate {
 	var templates []ComposeTemplate
 	entries, err := os.ReadDir(templatesDir)
 	if err != nil {
-		return []ComposeTemplate{}
+		return nil, fmt.Errorf("error leyendo directorio templates: %w", err)
 	}
 
 	for _, entry := range entries {
@@ -60,7 +69,7 @@ func getTemplates() []ComposeTemplate {
 		path := filepath.Join(templatesDir, entry.Name())
 		contentBytes, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			continue // Skip unreadable
 		}
 		content := string(contentBytes)
 
@@ -76,10 +85,10 @@ func getTemplates() []ComposeTemplate {
 		})
 	}
 
-	return templates
+	return templates, nil
 }
 
-func writeDefaultTemplates(dir string) {
+func writeDefaultTemplates(dir string) error {
 	defaults := map[string]string{
 		"n8n.yml": `services:
   n8n:
@@ -175,8 +184,11 @@ volumes:
 	}
 
 	for filename, content := range defaults {
-		os.WriteFile(filepath.Join(dir, filename), []byte(content), 0644)
+		if err := os.WriteFile(filepath.Join(dir, filename), []byte(content), 0644); err != nil {
+			return fmt.Errorf("error escribiendo template default %s: %w", filename, err)
+		}
 	}
+	return nil
 }
 
 func extractPortFromCompose(content string) string {
@@ -186,6 +198,7 @@ func extractPortFromCompose(content string) string {
 		if strings.Contains(trimmed, "-") && strings.Contains(trimmed, ":") {
 			parts := strings.Split(trimmed, ":")
 			if len(parts) >= 2 {
+				// Cleaner extraction logic could be regex, but keeping simple
 				portCandidate := strings.Trim(parts[0], " -\"'")
 				if len(portCandidate) > 0 && portCandidate[0] >= '0' && portCandidate[0] <= '9' {
 					return portCandidate
@@ -196,8 +209,11 @@ func extractPortFromCompose(content string) string {
 	return "?"
 }
 
-func runDockerUpCommand() error {
-	templates := getTemplates()
+func runDockerUpCommand(ctx context.Context) error {
+	templates, err := getTemplates()
+	if err != nil {
+		return err
+	}
 
 	ui.ShowSection("🚀 Kolyn Up - Levantar Servicios")
 
@@ -218,7 +234,12 @@ func runDockerUpCommand() error {
 	ui.Gray.Printf("💡 Tip: Agrega tus propios .yml en %s\n\n", filepath.Join(homeDir, ".kolyn", "templates"))
 
 	fmt.Print("Selecciona: ")
-	selection := readInput()
+
+	reader := bufio.NewReader(os.Stdin)
+	selection, err := readInput(reader)
+	if err != nil {
+		return err
+	}
 
 	if selection == "0" || selection == "" {
 		ui.PrintInfo("Operación cancelada")
@@ -226,18 +247,25 @@ func runDockerUpCommand() error {
 	}
 
 	var idx int
-	fmt.Sscan(selection, &idx)
+	if _, err := fmt.Sscan(selection, &idx); err != nil {
+		ui.PrintWarning("Selección inválida")
+		return nil
+	}
+
 	if idx < 1 || idx > len(templates) {
 		ui.PrintWarning("Selección inválida")
 		return nil
 	}
 
 	template := templates[idx-1]
-	return startService(template)
+	return startService(ctx, template, reader)
 }
 
-func startService(t ComposeTemplate) error {
-	homeDir, _ := os.UserHomeDir()
+func startService(ctx context.Context, t ComposeTemplate, reader *bufio.Reader) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("error obteniendo home dir: %w", err)
+	}
 	dockerDir := filepath.Join(homeDir, ".kolyn", "services", t.Service)
 
 	if _, err := os.Stat(dockerDir); err == nil {
@@ -248,13 +276,17 @@ func startService(t ComposeTemplate) error {
 		ui.Gray.Println("  0. Cancelar")
 		fmt.Println()
 		fmt.Print("Selecciona una opción: ")
-		answer := readInput()
+
+		answer, err := readInput(reader)
+		if err != nil {
+			return err
+		}
 
 		switch answer {
 		case "1":
 			ui.PrintStep("Sobrescribiendo compose...")
 		case "2":
-			return liftExistingService(dockerDir, t)
+			return liftExistingService(ctx, dockerDir, t)
 		default:
 			ui.PrintInfo("Operación cancelada")
 			return nil
@@ -279,12 +311,16 @@ func startService(t ComposeTemplate) error {
 	fmt.Println()
 	ui.YellowText.Println("¿Deseas levantar el servicio ahora? [s/n]: ")
 	fmt.Print("> ")
-	answer := readInput()
+
+	answer, err := readInput(reader)
+	if err != nil {
+		return err
+	}
 
 	if strings.ToLower(answer) == "s" || strings.ToLower(answer) == "si" || strings.ToLower(answer) == "yes" {
 		ui.PrintStep("Levantando servicio con Docker...")
 
-		cmd := exec.Command("docker", "compose", "up", "-d")
+		cmd := exec.CommandContext(ctx, "docker", "compose", "up", "-d")
 		cmd.Dir = dockerDir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -304,7 +340,7 @@ func startService(t ComposeTemplate) error {
 	return nil
 }
 
-func liftExistingService(dockerDir string, t ComposeTemplate) error {
+func liftExistingService(ctx context.Context, dockerDir string, t ComposeTemplate) error {
 	composePath := filepath.Join(dockerDir, "docker-compose.yml")
 	if _, err := os.Stat(composePath); os.IsNotExist(err) {
 		ui.PrintWarning("No se encontró docker-compose.yml en: %s", dockerDir)
@@ -313,7 +349,7 @@ func liftExistingService(dockerDir string, t ComposeTemplate) error {
 
 	ui.PrintStep("Levantando servicio existente...")
 
-	cmd := exec.Command("docker", "compose", "up", "-d")
+	cmd := exec.CommandContext(ctx, "docker", "compose", "up", "-d")
 	cmd.Dir = dockerDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

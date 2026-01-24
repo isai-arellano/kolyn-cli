@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,11 +19,8 @@ var skillsCmd = &cobra.Command{
 	Use:   "skills",
 	Short: "Retorna las rutas de los skills disponibles para contexto de IA",
 	Long:  `Retorna un JSON con todas las skills disponibles y sus rutas. La IA puede usar estas rutas para leer el contenido de cada skill.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := getSkillsJSON(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runSkillsJSON(cmd.Context())
 	},
 }
 
@@ -29,11 +28,8 @@ var skillsPathsCmd = &cobra.Command{
 	Use:   "paths",
 	Short: "Retorna solo las rutas de los skills",
 	Long:  `Retorna una lista de rutas de skills (una por línea) para facilitar el parsing.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := getSkillsPaths(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runSkillsPaths(cmd.Context())
 	},
 }
 
@@ -42,7 +38,7 @@ var skillsListCmd = &cobra.Command{
 	Short: "Lista skills y permite ver/editar su contenido",
 	Long:  `Muestra lista de skills. Selecciona uno para ver contenido, editar o regresar.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runSkillsList()
+		return runSkillsList(cmd.Context())
 	},
 }
 
@@ -61,17 +57,11 @@ type SkillsJSON struct {
 	Skills      []SkillInfo `json:"skills"`
 }
 
-func readInput() string {
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	return strings.TrimSpace(input)
-}
-
 // getSkillDescriptionFromFile extrae la descripción de un skill
 func getSkillDescriptionFromFile(content string) string {
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "- **Description**") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
@@ -86,15 +76,6 @@ func getSkillDescriptionFromFile(content string) string {
 		}
 	}
 	return ""
-}
-
-// getSkillsDir obtiene el directorio de skills
-func getSkillsDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("error obteniendo directorio home: %w", err)
-	}
-	return filepath.Join(homeDir, ".kolyn", "skills"), nil
 }
 
 // getSkillsDirs obtiene todos los directorios donde buscar skills (local y sources)
@@ -123,27 +104,33 @@ func getSkillsDirs() ([]string, error) {
 	return dirs, nil
 }
 
-// getSkillsJSON retorna todas las skills en formato JSON
-func getSkillsJSON() error {
+// scanSkills busca todos los skills disponibles
+func scanSkills(ctx context.Context) ([]SkillInfo, error) {
 	skillDirs, err := getSkillsDirs()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	allSkills := []SkillInfo{}
-	totalSkills := 0
+	var allSkills []SkillInfo
 
 	for _, baseDir := range skillDirs {
 		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 			continue
 		}
 
-		// Caminar recursivamente para encontrar .md
-		err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		err := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return nil
+				return nil // Skip errors accessing files
 			}
-			if !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
+
+			// Check context cancellation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			if !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
 				// Calcular categoría relativa al baseDir
 				relPath, _ := filepath.Rel(baseDir, path)
 				category := filepath.Dir(relPath)
@@ -151,28 +138,40 @@ func getSkillsJSON() error {
 					category = "root"
 				}
 
-				skillName := strings.TrimSuffix(info.Name(), ".md")
-				content, _ := os.ReadFile(path)
+				skillName := strings.TrimSuffix(d.Name(), ".md")
+				contentBytes, err := os.ReadFile(path)
+				if err != nil {
+					return nil // Skip unreadable files
+				}
 
 				allSkills = append(allSkills, SkillInfo{
 					Name:        skillName,
 					Category:    category,
 					Path:        path,
-					Description: getSkillDescriptionFromFile(string(content)),
+					Description: getSkillDescriptionFromFile(string(contentBytes)),
 				})
-				totalSkills++
 			}
 			return nil
 		})
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("error escaneando directorio %s: %w", baseDir, err)
 		}
 	}
 
+	return allSkills, nil
+}
+
+// runSkillsJSON retorna todas las skills en formato JSON
+func runSkillsJSON(ctx context.Context) error {
+	skills, err := scanSkills(ctx)
+	if err != nil {
+		return err
+	}
+
 	result := SkillsJSON{
-		TotalSkills: totalSkills,
+		TotalSkills: len(skills),
 		SkillsDir:   "combined",
-		Skills:      allSkills,
+		Skills:      skills,
 	}
 
 	jsonData, err := json.MarshalIndent(result, "", "  ")
@@ -184,74 +183,38 @@ func getSkillsJSON() error {
 	return nil
 }
 
-// getSkillsPaths retorna solo las rutas de las skills
-func getSkillsPaths() error {
-	skillDirs, err := getSkillsDirs()
+// runSkillsPaths retorna solo las rutas de las skills
+func runSkillsPaths(ctx context.Context) error {
+	skills, err := scanSkills(ctx)
 	if err != nil {
 		return err
 	}
 
-	for _, baseDir := range skillDirs {
-		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
-			continue
-		}
-
-		filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-			if err == nil && !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
-				fmt.Println(path)
-			}
-			return nil
-		})
+	for _, skill := range skills {
+		fmt.Println(skill.Path)
 	}
 	return nil
 }
 
 // runSkillsList muestra lista interactiva de skills
-func runSkillsList() error {
-	skillDirs, err := getSkillsDirs()
+func runSkillsList(ctx context.Context) error {
+	skills, err := scanSkills(ctx)
 	if err != nil {
 		return err
 	}
 
-	var allSkills []SkillInfo
-
-	for _, baseDir := range skillDirs {
-		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
-			continue
-		}
-
-		filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-			if err == nil && !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
-				relPath, _ := filepath.Rel(baseDir, path)
-				category := filepath.Dir(relPath)
-				if category == "." {
-					category = "root"
-				}
-
-				skillName := strings.TrimSuffix(info.Name(), ".md")
-				content, _ := os.ReadFile(path)
-
-				allSkills = append(allSkills, SkillInfo{
-					Name:        skillName,
-					Category:    category,
-					Path:        path,
-					Description: getSkillDescriptionFromFile(string(content)),
-				})
-			}
-			return nil
-		})
-	}
-
-	if len(allSkills) == 0 {
-		fmt.Println("No hay skills disponibles en ~/.kolyn/skills ni en ~/.kolyn/sources")
+	if len(skills) == 0 {
+		ui.PrintWarning("No hay skills disponibles en ~/.kolyn/skills ni en ~/.kolyn/sources")
 		return nil
 	}
+
+	reader := bufio.NewReader(os.Stdin)
 
 	for {
 		// Mostrar lista de skills
 		ui.ShowSection("📚 Skills Disponibles")
 
-		for i, skill := range allSkills {
+		for i, skill := range skills {
 			ui.WhiteText.Printf("  %d. %s/%s\n", i+1, skill.Category, skill.Name)
 			if skill.Description != "" {
 				ui.Gray.Printf("     %s\n", skill.Description)
@@ -262,31 +225,37 @@ func runSkillsList() error {
 
 		fmt.Print("Selecciona un skill (número): ")
 
-		input := readInput()
+		input, err := readInput(reader)
+		if err != nil {
+			return err
+		}
 
 		if input == "0" {
 			return nil
 		}
 
 		var selection int
-		fmt.Sscan(input, &selection)
+		if _, err := fmt.Sscan(input, &selection); err != nil {
+			ui.PrintWarning("Entrada inválida")
+			continue
+		}
 
-		if selection < 1 || selection > len(allSkills) {
+		if selection < 1 || selection > len(skills) {
 			ui.PrintWarning("Selección inválida")
 			continue
 		}
 
-		selectedSkill := allSkills[selection-1]
+		selectedSkill := skills[selection-1]
 
 		// Mostrar opciones para el skill seleccionado
-		if err := showSkillOptions(selectedSkill); err != nil {
+		if err := showSkillOptions(ctx, reader, selectedSkill); err != nil {
 			return err
 		}
 	}
 }
 
 // showSkillOptions muestra opciones para un skill específico
-func showSkillOptions(skill SkillInfo) error {
+func showSkillOptions(ctx context.Context, reader *bufio.Reader, skill SkillInfo) error {
 	for {
 		ui.ShowSection(fmt.Sprintf("📄 %s/%s", skill.Category, skill.Name))
 		ui.Gray.Printf("Ruta: %s\n\n", skill.Path)
@@ -298,17 +267,20 @@ func showSkillOptions(skill SkillInfo) error {
 
 		fmt.Print("Selecciona una opción: ")
 
-		input := readInput()
+		input, err := readInput(reader)
+		if err != nil {
+			return err
+		}
 
 		switch input {
 		case "0":
 			return nil
 		case "1":
-			if err := viewSkillContent(skill); err != nil {
+			if err := viewSkillContent(reader, skill); err != nil {
 				return err
 			}
 		case "2":
-			if err := editSkillContent(skill); err != nil {
+			if err := editSkillContent(ctx, skill); err != nil {
 				return err
 			}
 		default:
@@ -318,7 +290,7 @@ func showSkillOptions(skill SkillInfo) error {
 }
 
 // viewSkillContent muestra el contenido de un skill (solo lectura)
-func viewSkillContent(skill SkillInfo) error {
+func viewSkillContent(reader *bufio.Reader, skill SkillInfo) error {
 	content, err := os.ReadFile(skill.Path)
 	if err != nil {
 		return fmt.Errorf("error leyendo skill: %w", err)
@@ -330,19 +302,19 @@ func viewSkillContent(skill SkillInfo) error {
 	fmt.Println()
 
 	ui.Gray.Println("Presiona Enter para continuar...")
-	readInput()
+	_, _ = readInput(reader)
 
 	return nil
 }
 
 // editSkillContent permite editar el contenido de un skill
-func editSkillContent(skill SkillInfo) error {
+func editSkillContent(ctx context.Context, skill SkillInfo) error {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
 		editor = "vim"
 	}
 
-	cmd := exec.Command(editor, skill.Path)
+	cmd := exec.CommandContext(ctx, editor, skill.Path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -359,27 +331,17 @@ func editSkillContent(skill SkillInfo) error {
 }
 
 // GetAllSkillsPaths retorna todas las rutas de skills (para uso interno)
+// Deprecated: use scanSkills instead or if needed for external consumers, refactor to use context
 func GetAllSkillsPaths() ([]string, error) {
-	skillDirs, err := getSkillsDirs()
+	// Simple wrapper for backward compatibility if needed, though scanSkills is preferred
+	skills, err := scanSkills(context.Background())
 	if err != nil {
 		return nil, err
 	}
-
-	var paths []string
-
-	for _, baseDir := range skillDirs {
-		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
-			continue
-		}
-
-		filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-			if err == nil && !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
-				paths = append(paths, path)
-			}
-			return nil
-		})
+	paths := make([]string, len(skills))
+	for i, s := range skills {
+		paths[i] = s.Path
 	}
-
 	return paths, nil
 }
 
