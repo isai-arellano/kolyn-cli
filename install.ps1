@@ -38,9 +38,20 @@ $Filename = "kolyn_Windows_$Arch.zip"
 $LatestUrl = "https://github.com/$Repo/releases/latest/download/$Filename"
 
 # Crear directorio temporal
-$TmpDir = Join-Path $env:TEMP "kolyn_install"
+$BaseTemp = $env:TEMP
+if (-not $BaseTemp) {
+    $BaseTemp = [System.IO.Path]::GetTempPath()
+}
+$TmpDir = Join-Path $BaseTemp "kolyn_install"
+
+Write-Host "Temp path: $TmpDir" -ForegroundColor $Gray
+
 if (Test-Path $TmpDir) { 
-    Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue 
+    try {
+        Remove-Item -Recurse -Force $TmpDir -ErrorAction Continue
+    } catch {
+        Write-Host "Warning: Could not remove existing temp dir. Trying to proceed..." -ForegroundColor $Yellow
+    }
 }
 New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
 
