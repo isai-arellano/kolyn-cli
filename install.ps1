@@ -1,15 +1,26 @@
 # Configuración
+$ErrorActionPreference = "Stop"
 $Repo = "isai-arellano/kolyn-cli"
 $Binary = "kolyn"
-$InstallDir = "$env:USERPROFILE\bin"
 
-# Colores (aproximación para PowerShell)
+# Definir directorios
+if ($env:USERPROFILE) {
+    $HomeDir = $env:USERPROFILE
+} else {
+    $HomeDir = $HOME
+}
+$InstallDir = Join-Path $HomeDir "bin"
+$DestExe = Join-Path $InstallDir "$Binary.exe"
+
+# Colores
 $Blue = [ConsoleColor]::Blue
 $Green = [ConsoleColor]::Green
 $Red = [ConsoleColor]::Red
+$Yellow = [ConsoleColor]::Yellow
 $Reset = [ConsoleColor]::White
 
 Write-Host "Installing Kolyn CLI..." -ForegroundColor $Blue
+Write-Host "Install Directory: $InstallDir" -ForegroundColor $Gray
 
 # Detectar Arquitectura
 $Arch = "x86_64"
@@ -27,7 +38,9 @@ $LatestUrl = "https://github.com/$Repo/releases/latest/download/$Filename"
 
 # Crear directorio temporal
 $TmpDir = Join-Path $env:TEMP "kolyn_install"
-if (Test-Path $TmpDir) { Remove-Item -Recurse -Force $TmpDir }
+if (Test-Path $TmpDir) { 
+    Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue 
+}
 New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
 
 # Descargar
@@ -37,6 +50,7 @@ try {
     Invoke-WebRequest -Uri $LatestUrl -OutFile $ZipPath
 } catch {
     Write-Host "Error downloading release. Check if release exists for this architecture." -ForegroundColor $Red
+    Write-Host $_.Exception.Message -ForegroundColor $Red
     exit 1
 }
 
@@ -49,24 +63,32 @@ if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 }
 
-# Instalar (Mover binario)
+# Buscar binario (recursivo)
 $SourceExe = Get-ChildItem -Path $TmpDir -Recurse -Filter "$Binary.exe" | Select-Object -First 1
 
 if ($null -ne $SourceExe) {
-    Write-Host "Installing to $DestExe..."
+    Write-Host "Found binary at: $($SourceExe.FullName)"
+    Write-Host "Installing to: $DestExe"
     
-    # Intentar detener procesos que usen el archivo antes de sobrescribir
+    # Detener proceso si corre
     if (Get-Process $Binary -ErrorAction SilentlyContinue) {
         Stop-Process -Name $Binary -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
     }
     
+    # Mover
+    if (Test-Path $DestExe) {
+        Remove-Item -Path $DestExe -Force -ErrorAction SilentlyContinue
+    }
     Move-Item -Path $SourceExe.FullName -Destination $DestExe -Force
 } else {
-    Write-Host "Error: Binary not found in zip." -ForegroundColor $Red
+    Write-Host "Error: Binary '$Binary.exe' not found in zip." -ForegroundColor $Red
+    Write-Host "Contents of $TmpDir :"
+    Get-ChildItem $TmpDir -Recurse | Select-Object FullName
     exit 1
 }
 
-# Agregar al PATH si no está
+# Agregar al PATH
 $UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
 if ($UserPath -notlike "*$InstallDir*") {
     Write-Host "Adding $InstallDir to PATH..."
@@ -76,7 +98,7 @@ if ($UserPath -notlike "*$InstallDir*") {
 }
 
 # Limpieza
-Remove-Item -Recurse -Force $TmpDir
+Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
 
 Write-Host "Kolyn installed successfully!" -ForegroundColor $Green
 Write-Host "Run 'kolyn --help' to get started."
