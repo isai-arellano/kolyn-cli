@@ -72,6 +72,7 @@ func showWelcome() {
 		description string
 	}{
 		{"kolyn init", "Inicializa kolyn y agrega contexto al Agent.md"},
+		{"kolyn sync", "Sincroniza skills remotos desde .kolyn.json"},
 		{"kolyn skills", "Retorna JSON con skills disponibles para la IA"},
 		{"kolyn skills list", "Lista skills y permite ver/editar contenido"},
 		{"kolyn skills paths", "Retorna solo las rutas de skills"},
