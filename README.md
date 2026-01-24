@@ -57,7 +57,7 @@ Esto descargará automáticamente las skills de tu equipo en `~/.kolyn/sources/`
 Kolyn incluye un set de navajas suizas para tareas comunes.
 
 ### 🐳 Docker Tools
-Levanta infraestructura de desarrollo en segundos sin escribir `docker-compose.yaml` manualmente.
+Levanta infraestructura de desarrollo en segundos usando templates pre-configurados.
 
 ```bash
 # Levantar un servicio (menú interactivo)
@@ -69,7 +69,12 @@ kolyn tools docker list
 # Detener un servicio
 kolyn tools docker down
 ```
-*Servicios disponibles:* n8n, PostgreSQL, Redis, MongoDB, Next.js Stack, entre otros.
+
+**Personalización:**
+Kolyn busca templates `.yml` en `~/.kolyn/templates/`. 
+Puedes agregar tus propios archivos ahí y aparecerán automáticamente en el menú.
+
+*Templates incluidos por defecto:* n8n, PostgreSQL, Redis, MongoDB.
 *Ubicación de datos:* Los volúmenes y archivos persisten en `~/.kolyn/services/`.
 
 ### 🔑 SSH Manager
@@ -112,6 +117,7 @@ Kolyn mantiene tu sistema ordenado guardando todo en `~/.kolyn`:
 ```text
 ~/.kolyn/
 ├── services/       # Contenedores Docker y sus volúmenes
+├── templates/      # Templates .yml para docker up (Editable)
 ├── skills/         # Skills locales
 └── sources/        # Skills sincronizadas desde Git (Sync)
 ```
