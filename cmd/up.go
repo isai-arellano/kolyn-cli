@@ -14,7 +14,7 @@ import (
 var dockerUpCmd = &cobra.Command{
 	Use:     "up",
 	Short:   "Levanta servicios Docker desde templates",
-	Long:    `Crea y levanta servicios Docker desde templates pre-configurados.`,
+	Long:    `Crea y levanta servicios Docker desde templates locales (~/.kolyn/templates).`,
 	Aliases: []string{"docker-up"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDockerUpCommand()
@@ -26,106 +26,185 @@ type ComposeTemplate struct {
 	Description string
 	Service     string
 	Port        string
+	Content     string
 }
 
-func getTemplatesFromSkills() []ComposeTemplate {
+func getTemplates() []ComposeTemplate {
 	homeDir, _ := os.UserHomeDir()
-	skillsPath := filepath.Join(homeDir, ".kolyn/skills", "automation", "docker-compose-automation.md")
+	templatesDir := filepath.Join(homeDir, ".kolyn", "templates")
 
-	content, err := os.ReadFile(skillsPath)
-	if err != nil {
-		return getDefaultTemplates()
+	// 1. Inicializar directorio y defaults si no existe
+	if _, err := os.Stat(templatesDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(templatesDir, 0755); err == nil {
+			writeDefaultTemplates(templatesDir)
+		}
 	}
 
+	// 2. Escanear archivos .yml / .yaml
 	var templates []ComposeTemplate
+	entries, err := os.ReadDir(templatesDir)
+	if err != nil {
+		return []ComposeTemplate{}
+	}
 
-	sections := strings.Split(string(content), "### ")
-	for _, section := range sections[1:] {
-		lines := strings.Split(section, "\n")
-		if len(lines) < 2 {
+	for _, entry := range entries {
+		if entry.IsDir() {
 			continue
 		}
 
-		name := strings.TrimSpace(lines[0])
-		name = strings.TrimPrefix(name, "1. ")
-		name = strings.TrimPrefix(name, "2. ")
-		name = strings.TrimPrefix(name, "3. ")
-		name = strings.TrimPrefix(name, "4. ")
-		name = strings.TrimPrefix(name, "5. ")
-		name = strings.TrimPrefix(name, "6. ")
-		name = strings.TrimPrefix(name, "7. ")
-		name = strings.TrimPrefix(name, "8. ")
-		name = strings.TrimPrefix(name, "9. ")
-		name = strings.TrimSpace(name)
-		sectionContent := strings.Join(lines[1:], "\n")
-
-		if name == "" || !strings.HasPrefix(sectionContent, "```yaml") {
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".yml" && ext != ".yaml" {
 			continue
 		}
 
-		var port string
-		if strings.Contains(name, "n8n") {
-			port = "5678"
-		} else if strings.Contains(name, "PostgreSQL") && strings.Contains(name, "pgAdmin") {
-			port = "5050"
-		} else if strings.Contains(name, "PostgreSQL") {
-			port = "5432"
-		} else if strings.Contains(name, "Redis") {
-			port = "6379"
-		} else if strings.Contains(name, "MongoDB") {
-			port = "27017"
-		} else if strings.Contains(name, "Next.js") {
-			port = "3000"
-		} else {
-			port = "?"
+		path := filepath.Join(templatesDir, entry.Name())
+		contentBytes, err := os.ReadFile(path)
+		if err != nil {
+			continue
 		}
+		content := string(contentBytes)
 
-		serviceName := strings.ToLower(name)
-		serviceName = strings.ReplaceAll(serviceName, " ", "-")
-		serviceName = strings.ReplaceAll(serviceName, "+", "-")
-		serviceName = strings.ReplaceAll(serviceName, "(automatizacion)", "")
-		serviceName = strings.ReplaceAll(serviceName, "(automatización)", "")
-		serviceName = strings.ReplaceAll(serviceName, "(producción)", "")
-		serviceName = strings.ReplaceAll(serviceName, "(production)", "")
-		serviceName = strings.ReplaceAll(serviceName, "()", "")
-		serviceName = strings.Trim(serviceName, "-")
-		if serviceName == "" {
-			serviceName = strings.ToLower(strings.Split(name, " ")[0])
-		}
+		name := strings.TrimSuffix(entry.Name(), ext)
+		port := extractPortFromCompose(content)
 
 		templates = append(templates, ComposeTemplate{
 			Name:        name,
-			Description: name,
-			Service:     serviceName,
+			Description: fmt.Sprintf("Template: %s", entry.Name()),
+			Service:     name,
 			Port:        port,
+			Content:     content,
 		})
-	}
-
-	if len(templates) == 0 {
-		return getDefaultTemplates()
 	}
 
 	return templates
 }
 
-func getDefaultTemplates() []ComposeTemplate {
-	return []ComposeTemplate{
-		{"n8n", "Automatización de workflows", "n8n", "5678"},
-		{"postgres", "Base de datos PostgreSQL", "postgres", "5432"},
-		{"postgres-pgadmin", "PostgreSQL + pgAdmin", "postgres-pgadmin", "5050"},
-		{"redis", "Cache en memoria", "redis", "6379"},
-		{"mongodb", "Base de datos MongoDB", "mongodb", "27017"},
-		{"qdrant", "Vector Database para IA", "qdrant", "6333"},
-		{"ollama", "LLMs Locales (Llama 3, Mistral)", "ollama", "11434"},
-		{"minio", "S3 Storage Local", "minio", "9000"},
-		{"nextjs-postgres", "Next.js + PostgreSQL + Redis", "nextjs-postgres", "3000"},
+func writeDefaultTemplates(dir string) {
+	defaults := map[string]string{
+		"n8n.yml": `services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=password123
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=America/Argentina/Buenos_Aires
+      - TZ=America/Argentina/Buenos_Aires
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./local_files:/files
+    networks:
+      - n8n-network
+
+volumes:
+  n8n_data:
+
+networks:
+  n8n-network:
+    driver: bridge
+`,
+		"postgres.yml": `version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=app
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+`,
+		"redis.yml": `version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
+`,
+		"mongodb.yml": `version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=app
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    volumes:
+      - mongo_data:/data/db
+
+  mongo-express:
+    image: mongo-express:1.0
+    container_name: mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://admin:password@mongodb:27017
+    depends_on:
+      - mongodb
+
+volumes:
+  mongo_data:
+`,
+	}
+
+	for filename, content := range defaults {
+		os.WriteFile(filepath.Join(dir, filename), []byte(content), 0644)
 	}
 }
 
+func extractPortFromCompose(content string) string {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "-") && strings.Contains(trimmed, ":") {
+			parts := strings.Split(trimmed, ":")
+			if len(parts) >= 2 {
+				portCandidate := strings.Trim(parts[0], " -\"'")
+				if len(portCandidate) > 0 && portCandidate[0] >= '0' && portCandidate[0] <= '9' {
+					return portCandidate
+				}
+			}
+		}
+	}
+	return "?"
+}
+
 func runDockerUpCommand() error {
-	templates := getTemplatesFromSkills()
+	templates := getTemplates()
 
 	ui.ShowSection("🚀 Kolyn Up - Levantar Servicios")
+
+	if len(templates) == 0 {
+		ui.PrintWarning("No se encontraron templates en ~/.kolyn/templates/")
+		return nil
+	}
 
 	fmt.Println("Selecciona un servicio para levantar:\n")
 
@@ -134,6 +213,9 @@ func runDockerUpCommand() error {
 	}
 	ui.Gray.Println("  0. Cancelar")
 	fmt.Println()
+
+	homeDir, _ := os.UserHomeDir()
+	ui.Gray.Printf("💡 Tip: Agrega tus propios .yml en %s\n\n", filepath.Join(homeDir, ".kolyn", "templates"))
 
 	fmt.Print("Selecciona: ")
 	selection := readInput()
@@ -151,10 +233,10 @@ func runDockerUpCommand() error {
 	}
 
 	template := templates[idx-1]
-	return startService(template, templates)
+	return startService(template)
 }
 
-func startService(t ComposeTemplate, allTemplates []ComposeTemplate) error {
+func startService(t ComposeTemplate) error {
 	homeDir, _ := os.UserHomeDir()
 	dockerDir := filepath.Join(homeDir, ".kolyn", "services", t.Service)
 
@@ -187,8 +269,8 @@ func startService(t ComposeTemplate, allTemplates []ComposeTemplate) error {
 	composePath := filepath.Join(dockerDir, "docker-compose.yml")
 	ui.PrintStep("Generando %s...", composePath)
 
-	content := generateCompose(t.Service, allTemplates)
-	if err := os.WriteFile(composePath, []byte(content), 0644); err != nil {
+	// Usar el contenido directo del template
+	if err := os.WriteFile(composePath, []byte(t.Content), 0644); err != nil {
 		return fmt.Errorf("error escribiendo compose: %w", err)
 	}
 
@@ -248,269 +330,4 @@ func liftExistingService(dockerDir string, t ComposeTemplate) error {
 	ui.Gray.Printf("  Acceder:     http://localhost:%s\n", t.Port)
 
 	return nil
-}
-
-func generateCompose(service string, templates []ComposeTemplate) string {
-	serviceClean := strings.ToLower(service)
-	serviceClean = strings.ReplaceAll(serviceClean, " ", "-")
-	serviceClean = strings.ReplaceAll(serviceClean, "(", "")
-	serviceClean = strings.ReplaceAll(serviceClean, ")", "")
-
-	for _, t := range templates {
-		nameClean := strings.ToLower(t.Name)
-		nameClean = strings.ReplaceAll(nameClean, " ", "-")
-		nameClean = strings.ReplaceAll(nameClean, "(", "")
-		nameClean = strings.ReplaceAll(nameClean, ")", "")
-		nameClean = strings.ReplaceAll(nameClean, "+", "-")
-
-		if t.Service == service || nameClean == serviceClean {
-			return getDefaultCompose(t.Service)
-		}
-
-		if strings.Contains(t.Service, service) || strings.Contains(service, t.Service) {
-			return getDefaultCompose(t.Service)
-		}
-	}
-
-	return getDefaultCompose(service)
-}
-
-func getDefaultCompose(service string) string {
-	switch service {
-	case "n8n":
-		return `services:
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n
-    restart: unless-stopped
-    ports:
-      - "5678:5678"
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=password123
-      - WEBHOOK_URL=http://localhost:5678/
-      - GENERIC_TIMEZONE=America/Argentina/Buenos_Aires
-      - TZ=America/Argentina/Buenos_Aires
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ./local_files:/files
-    networks:
-      - n8n-network
-
-volumes:
-  n8n_data:
-
-networks:
-  n8n-network:
-    driver: bridge
-`
-	case "postgres":
-		return `version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=app
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-`
-	case "postgres-pgadmin":
-		return `version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=app
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  pgadmin:
-    image: dpage/pgadmin4:8
-    container_name: pgadmin
-    restart: unless-stopped
-    ports:
-      - "5050:80"
-    environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-
-volumes:
-  postgres_data:
-  pgadmin_data:
-`
-	case "redis":
-		return `version: '3.8'
-
-services:
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
-volumes:
-  redis_data:
-`
-	case "mongodb":
-		return `version: '3.8'
-
-services:
-  mongodb:
-    image: mongo:7
-    container_name: mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      - MONGO_INITDB_DATABASE=app
-      - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=password
-    volumes:
-      - mongo_data:/data/db
-
-  mongo-express:
-    image: mongo-express:1.0
-    container_name: mongo-express
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    environment:
-      - ME_CONFIG_MONGODB_URL=mongodb://admin:password@mongodb:27017
-    depends_on:
-      - mongodb
-
-volumes:
-  mongo_data:
-`
-	case "qdrant":
-		return `version: '3.8'
-
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
-
-volumes:
-  qdrant_data:
-`
-	case "ollama":
-		return `version: '3.8'
-
-services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    # Habilitar GPU si es necesario descomentando abajo:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-
-volumes:
-  ollama_data:
-`
-	case "minio":
-		return `version: '3.8'
-
-services:
-  minio:
-    image: minio/minio:latest
-    container_name: minio
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      - MINIO_ROOT_USER=admin
-      - MINIO_ROOT_PASSWORD=password123
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio_data:/data
-
-volumes:
-  minio_data:
-`
-	case "nextjs-postgres":
-		return `version: '3.8'
-
-services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: nextjs-app
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=development
-    volumes:
-      - .:/app
-      - /app/node_modules
-    depends_on:
-      - postgres
-      - redis
-
-  postgres:
-    image: postgres:15-alpine
-    container_name: postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=app
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-
-volumes:
-  postgres_data:
-`
-	default:
-		return ""
-	}
 }
