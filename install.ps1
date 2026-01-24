@@ -48,8 +48,12 @@ Write-Host "Temp path: $TmpDir" -ForegroundColor $Gray
 
 if (Test-Path $TmpDir) { 
     try {
-        Remove-Item -Recurse -Force $TmpDir -ErrorAction Continue
+        $OldEAP = $ErrorActionPreference
+        $ErrorActionPreference = "SilentlyContinue"
+        Remove-Item -Recurse -Force $TmpDir
+        $ErrorActionPreference = $OldEAP
     } catch {
+        $ErrorActionPreference = $OldEAP
         Write-Host "Warning: Could not remove existing temp dir. Trying to proceed..." -ForegroundColor $Yellow
     }
 }
@@ -110,10 +114,16 @@ if ($UserPath -notlike "*$InstallDir*") {
 }
 
 # Limpieza
-try {
-    Remove-Item -Recurse -Force $TmpDir -ErrorAction Continue
-} catch {
-    Write-Host "Warning: Could not remove temp dir '$TmpDir'. You may delete it manually." -ForegroundColor $Yellow
+if (Test-Path $TmpDir) {
+    try {
+        $OldEAP = $ErrorActionPreference
+        $ErrorActionPreference = "SilentlyContinue"
+        Remove-Item -Recurse -Force $TmpDir
+        $ErrorActionPreference = $OldEAP
+    } catch {
+        $ErrorActionPreference = $OldEAP
+        Write-Host "Warning: Could not remove temp dir '$TmpDir'. You may delete it manually." -ForegroundColor $Yellow
+    }
 }
 
 Write-Host "Kolyn installed successfully!" -ForegroundColor $Green
