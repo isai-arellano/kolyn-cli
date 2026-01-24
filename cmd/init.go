@@ -153,7 +153,7 @@ func createAgentWithKolyn(projectPath string) error {
 Kolyn Version: %s
 Creado: %s
 
-%s`, projectName, "v0.3.0", time.Now().Format("2006-01-02"), kolynContextTemplate)
+%s`, projectName, "v0.2.0", time.Now().Format("2006-01-02"), kolynContextTemplate)
 
 	agentPath := filepath.Join(projectPath, "Agent.md")
 

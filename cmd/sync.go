@@ -83,7 +83,6 @@ func loadProjectConfig() (*KolynConfig, error) {
 }
 
 func syncSource(url, baseDir string) error {
-	// Derivar nombre de carpeta desde URL (ej: github.com/user/repo -> user-repo)
 	folderName := sanitizeRepoName(url)
 	targetDir := filepath.Join(baseDir, folderName)
 

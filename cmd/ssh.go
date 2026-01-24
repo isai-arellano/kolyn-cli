@@ -56,7 +56,6 @@ func runSshCreate(name, ip, user string) error {
 
 	// 2. Generar llave ED25519
 	ui.PrintStep("Generando par de llaves ED25519...")
-	// ssh-keygen -t ed25519 -f keyPath -C "generada por kolyn para name" -N ""
 	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-C", fmt.Sprintf("kolyn-%s", name), "-N", "")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("error generando llave: %s", string(output))
@@ -97,7 +96,6 @@ Host %s
 	if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" || strings.ToLower(response) == "s" || strings.ToLower(response) == "si" {
 		ui.PrintStep("Copiando llave pública (te pedirá la contraseña del servidor)...")
 
-		// ssh-copy-id -i keyPath.pub user@ip
 		copyCmd := exec.Command("ssh-copy-id", "-i", keyPath+".pub", fmt.Sprintf("%s@%s", user, ip))
 		copyCmd.Stdin = os.Stdin
 		copyCmd.Stdout = os.Stdout

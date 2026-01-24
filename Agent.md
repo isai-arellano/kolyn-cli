@@ -1,6 +1,6 @@
 # Agent Context - kolyn-cli
 
-Kolyn Version: v0.3.0
+Kolyn Version: v0.2.0
 Creado: 2026-01-19
 
 
