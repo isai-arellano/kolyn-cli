@@ -6,11 +6,16 @@ Kolyn es una herramienta CLI diseñada para estandarizar flujos de trabajo en eq
 
 ## 📦 Instalación
 
-### Instalación Rápida (Mac/Linux)
-El script detecta tu arquitectura, descarga la última versión y la instala en tu PATH.
+### Instalación Rápida
 
+**Mac / Linux:**
 ```bash
 curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.ps1 | iex
 ```
 
 ### Desde Source (Go)
@@ -90,8 +95,14 @@ Comandos pensados para que los use tu Agente de IA (Windsurf, Cursor, Cline, etc
 
 Si decides irte, Kolyn limpia su desorden. El script te preguntará si quieres conservar tus Skills descargadas.
 
+**Mac / Linux:**
 ```bash
 curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.ps1 | iex
 ```
 
 ## 📂 Estructura de Archivos
