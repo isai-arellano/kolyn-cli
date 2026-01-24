@@ -18,6 +18,7 @@ $Green = [ConsoleColor]::Green
 $Red = [ConsoleColor]::Red
 $Yellow = [ConsoleColor]::Yellow
 $Reset = [ConsoleColor]::White
+$Gray = [ConsoleColor]::Gray
 
 Write-Host "Installing Kolyn CLI..." -ForegroundColor $Blue
 Write-Host "Install Directory: $InstallDir" -ForegroundColor $Gray
