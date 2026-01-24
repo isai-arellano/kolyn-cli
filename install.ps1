@@ -110,7 +110,11 @@ if ($UserPath -notlike "*$InstallDir*") {
 }
 
 # Limpieza
-Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+try {
+    Remove-Item -Recurse -Force $TmpDir -ErrorAction Continue
+} catch {
+    Write-Host "Warning: Could not remove temp dir '$TmpDir'. You may delete it manually." -ForegroundColor $Yellow
+}
 
 Write-Host "Kolyn installed successfully!" -ForegroundColor $Green
 Write-Host "Run 'kolyn --help' to get started."
