@@ -50,10 +50,9 @@ if (-not (Test-Path $InstallDir)) {
 }
 
 # Instalar (Mover binario)
-$SourceExe = Join-Path $TmpDir "$Binary.exe"
-$DestExe = Join-Path $InstallDir "$Binary.exe"
+$SourceExe = Get-ChildItem -Path $TmpDir -Recurse -Filter "$Binary.exe" | Select-Object -First 1
 
-if (Test-Path $SourceExe) {
+if ($null -ne $SourceExe) {
     Write-Host "Installing to $DestExe..."
     
     # Intentar detener procesos que usen el archivo antes de sobrescribir
@@ -61,7 +60,7 @@ if (Test-Path $SourceExe) {
         Stop-Process -Name $Binary -Force -ErrorAction SilentlyContinue
     }
     
-    Move-Item -Path $SourceExe -Destination $DestExe -Force
+    Move-Item -Path $SourceExe.FullName -Destination $DestExe -Force
 } else {
     Write-Host "Error: Binary not found in zip." -ForegroundColor $Red
     exit 1

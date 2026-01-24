@@ -57,10 +57,19 @@ fi
 
 # Install
 echo -e "Installing to $INSTALL_DIR..."
+
+# Find binary recursively (GoReleaser puts it in a subdir)
+SOURCE_BIN=$(find "$TMP_DIR" -type f -name "$BINARY" | head -n 1)
+
+if [ -z "$SOURCE_BIN" ]; then
+    echo -e "${RED}Error: Binary not found in extracted files.${NC}"
+    exit 1
+fi
+
 if [ -w "$INSTALL_DIR" ]; then
-    mv "$TMP_DIR/$BINARY" "$INSTALL_DIR/$BINARY"
+    mv "$SOURCE_BIN" "$INSTALL_DIR/$BINARY"
 else
-    sudo mv "$TMP_DIR/$BINARY" "$INSTALL_DIR/$BINARY"
+    sudo mv "$SOURCE_BIN" "$INSTALL_DIR/$BINARY"
 fi
 
 # Cleanup
