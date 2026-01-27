@@ -1,4 +1,5 @@
 # Configuración
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Binary = "kolyn"
 $InstallDir = "$env:USERPROFILE\bin"
 $KolynDir = "$env:USERPROFILE\.kolyn"

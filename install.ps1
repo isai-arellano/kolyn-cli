@@ -1,4 +1,5 @@
 # Configuración
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = "Stop"
 $Repo = "isai-arellano/kolyn-cli"
 $Binary = "kolyn"
