@@ -17,7 +17,11 @@ var initCmd = &cobra.Command{
 	Short: "Inicializa kolyn y genera Agent.md",
 	Long:  `Analiza el proyecto y genera un archivo Agent.md personalizado con las skills y reglas necesarias para la IA.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runInitCommand(cmd.Context())
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("error obteniendo directorio actual: %w", err)
+		}
+		return RunInitProject(cmd.Context(), cwd, true)
 	},
 }
 
@@ -30,44 +34,54 @@ type ProjectFeatures struct {
 	DevOps   bool
 }
 
-func runInitCommand(ctx context.Context) error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("error obteniendo directorio actual: %w", err)
-	}
-
+// RunInitProject initializes a project at the given root directory.
+// interactive: if true, asks the user for confirmation and features.
+func RunInitProject(ctx context.Context, root string, interactive bool) error {
 	ui.ShowSection("🚀 Inicializando Kolyn")
 
 	// 1. Detección automática
 	ui.PrintStep("Detectando tipo de proyecto...")
-	pType := detectProjectType(cwd)
+	pType := detectProjectType(root)
 	ui.Cyan.Printf("   🔍 Tipo detectado: %s\n\n", strings.ToUpper(pType))
 
-	agentPath := filepath.Join(cwd, "Agent.md")
+	agentPath := filepath.Join(root, "Agent.md")
 
-	// 2. Advertencia si existe
-	if _, err := os.Stat(agentPath); err == nil {
-		ui.YellowText.Println("⚠️  Ya existe un archivo Agent.md en este proyecto.")
-		ui.YellowText.Println("   Si continúas, se regenerará y perderás cambios manuales.")
-		if !ui.AskYesNo("¿Deseas continuar?") {
-			ui.PrintInfo("Operación cancelada.")
-			return nil
+	// 2. Advertencia si existe (solo en interactivo)
+	if interactive {
+		if _, err := os.Stat(agentPath); err == nil {
+			ui.YellowText.Println("⚠️  Ya existe un archivo Agent.md en este proyecto.")
+			ui.YellowText.Println("   Si continúas, se regenerará y perderás cambios manuales.")
+			if !ui.AskYesNo("¿Deseas continuar?") {
+				ui.PrintInfo("Operación cancelada.")
+				return nil
+			}
 		}
 	}
 
-	// 3. Preguntas Interactivas
+	// 3. Preguntas Interactivas o Defaults
 	ui.PrintStep("Configurando features del proyecto:")
 
 	features := ProjectFeatures{Type: pType}
 
-	features.UI = ui.AskYesNo("❓ ¿Tu proyecto usa componentes de UI? (shadcn, MUI, etc.)")
-	features.Database = ui.AskYesNo("❓ ¿Tu proyecto tiene base de datos?")
-	features.Auth = ui.AskYesNo("❓ ¿Tu proyecto tiene autenticación de usuarios?")
-	features.API = ui.AskYesNo("❓ ¿Tu proyecto consume APIs externas?")
-	features.DevOps = ui.AskYesNo("❓ ¿Tienes configurado CI/CD?")
+	if interactive {
+		features.UI = ui.AskYesNo("❓ ¿Tu proyecto usa componentes de UI? (shadcn, MUI, etc.)")
+		features.Database = ui.AskYesNo("❓ ¿Tu proyecto tiene base de datos?")
+		features.Auth = ui.AskYesNo("❓ ¿Tu proyecto tiene autenticación de usuarios?")
+		features.API = ui.AskYesNo("❓ ¿Tu proyecto consume APIs externas?")
+		features.DevOps = ui.AskYesNo("❓ ¿Tienes configurado CI/CD?")
+	} else {
+		// Defaults para modo no interactivo (ej. Scaffold)
+		// Si es Next.js scaffold, asumimos UI (Shadcn) y API (Zod) por default
+		if pType == "nextjs" {
+			features.UI = true
+			features.API = true
+			// DB y Auth se dejan en false a menos que el scaffold diga lo contrario
+		}
+		ui.PrintInfo("Usando configuración por defecto para scaffold.")
+	}
 
 	// 4. Generar Agent.md
-	if err := generateAgentMD(cwd, features); err != nil {
+	if err := GenerateAgentMD(root, features); err != nil {
 		return err
 	}
 
@@ -110,7 +124,8 @@ func exists(path string) bool {
 	return err == nil
 }
 
-func generateAgentMD(root string, f ProjectFeatures) error {
+// GenerateAgentMD generates the Agent.md file (exported for Scaffold use)
+func GenerateAgentMD(root string, f ProjectFeatures) error {
 	projectName := filepath.Base(root)
 
 	// Construir lista de features activas
@@ -131,7 +146,7 @@ func generateAgentMD(root string, f ProjectFeatures) error {
 		activeFeatures = append(activeFeatures, "devops")
 	}
 
-	// Construir lista de referencias sugeridas (esto podría ser dinámico, pero por ahora estático es mejor para velocidad)
+	// Construir lista de referencias sugeridas
 	var refs []string
 
 	// Base references based on type

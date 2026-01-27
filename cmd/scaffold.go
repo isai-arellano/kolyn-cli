@@ -58,16 +58,22 @@ func runScaffold(ctx context.Context) error {
 	case "1":
 		// Locate the skill file
 		home, _ := os.UserHomeDir()
-		skillPath = filepath.Join(home, ".kolyn", "skills", "scaffold", "web", "nextjs.md")
+		skillPath = filepath.Join(home, ".kolyn", "sources", "github.com-isai-arellano-kolyn-skills", "scaffold", "web", "nextjs.md")
 
-		// Fallback to local repo if developing or if sync hasn't run but file exists locally
+		// Fallback to old path if not found in sources
 		if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+			// Try without github prefix if sources are flat? No, stick to known structure or fail.
+			// Actually, fallback to local repo if developing
 			cwd, _ := os.Getwd()
 			localPath := filepath.Join(cwd, "skills", "scaffold", "web", "nextjs.md")
 			if _, err := os.Stat(localPath); err == nil {
 				skillPath = localPath
 			} else {
-				return fmt.Errorf("no se encontró la definición de scaffold para Next.js. Ejecuta 'kolyn sync' primero.")
+				// Try ~/.kolyn/skills old fallback
+				skillPath = filepath.Join(home, ".kolyn", "skills", "scaffold", "web", "nextjs.md")
+				if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+					return fmt.Errorf("no se encontró la definición de scaffold para Next.js. Ejecuta 'kolyn sync' primero.")
+				}
 			}
 		}
 	case "0":
@@ -160,7 +166,26 @@ func createNewProject(ctx context.Context, scaffold *ScaffoldSkill) error {
 
 	ui.Separator()
 	ui.PrintSuccess("¡Proyecto '%s' listo!", name)
-	ui.Gray.Printf("  cd %s\n", name)
+
+	// 3. Auto-Init (Generate Agent.md)
+	ui.PrintStep("Generando contexto de IA (Agent.md)...")
+
+	// Determine absolute path
+	absPath, _ := filepath.Abs(projectPath)
+
+	// We run interactive init so user can confirm features
+	// OR we run non-interactive with defaults.
+	// Let's ask the user if they want to configure it now
+	if ui.AskYesNo("¿Deseas configurar las capabilities del proyecto ahora (DB, Auth, etc)?") {
+		if err := RunInitProject(ctx, absPath, true); err != nil {
+			ui.PrintWarning("No se pudo completar la inicialización: %v", err)
+		}
+	} else {
+		// Run non-interactive with defaults
+		RunInitProject(ctx, absPath, false)
+	}
+
+	ui.Gray.Printf("\n  cd %s\n", name)
 	ui.Gray.Println("  kolyn check")
 
 	return nil
