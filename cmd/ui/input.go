@@ -89,7 +89,7 @@ func GetText(key string, args ...interface{}) string {
 		"audit_issues":      "se encontraron %d problemas en la auditoría",
 
 		// Config
-		"skills_repo_prompt": "Ingresa la URL del repositorio de skills de tu equipo (o deja vacío para usar el default):",
+		"skills_repo_prompt": "Ingresa la URL del repositorio de skills de tu equipo (ej. git@github.com:org/skills.git):",
 		"using_default_repo": "Usando repositorio oficial de Kolyn.",
 
 		// Uninstall
@@ -151,7 +151,7 @@ func GetText(key string, args ...interface{}) string {
 		"audit_issues":      "%d issues found during audit",
 
 		// Config
-		"skills_repo_prompt": "Enter your team's skills repository URL (or leave empty for default):",
+		"skills_repo_prompt": "Enter your team's skills repository URL (e.g. git@github.com:org/skills.git):",
 		"using_default_repo": "Using official Kolyn repository.",
 
 		// Uninstall

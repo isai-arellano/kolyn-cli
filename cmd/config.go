@@ -40,7 +40,7 @@ func runConfigInit(ctx context.Context) error {
 	ui.CurrentLanguage = lang
 
 	// 2. Repo de Skills
-	ui.PrintQuestion(ui.GetText("skills_repo_prompt", "Ingresa la URL del repositorio de skills de tu equipo (ej. git@github.com:org/skills.git):"))
+	ui.PrintQuestion(ui.GetText("skills_repo_prompt"))
 	repoURL := ui.ReadInput("> ")
 
 	var sources []string
