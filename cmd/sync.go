@@ -57,27 +57,22 @@ func runSyncCommand(ctx context.Context) error {
 	} else {
 		// --- MODO GLOBAL ---
 		if globalCfg == nil {
-			// Primera vez que corre: Setup inicial
+			// Primera vez que corre: Setup inicial interactivo
 			ui.PrintInfo(ui.GetText("no_config"))
 
-			// Seleccionar idioma
-			lang := ui.SelectLanguage()
-			ui.CurrentLanguage = lang
-
-			// Default sources
-			defaultSources := []string{}
-
-			// Guardar config global
-			newGlobal := &config.GlobalConfig{
-				Language:      lang,
-				SkillsSources: defaultSources,
+			if err := runConfigInit(ctx); err != nil {
+				return err
 			}
 
-			if err := config.SaveGlobalConfig(newGlobal); err != nil {
-				return fmt.Errorf("error saving global config: %w", err)
+			// Recargar la configuración recién creada
+			globalCfg, err = config.LoadGlobalConfig()
+			if err != nil {
+				return fmt.Errorf("error reloading global config: %w", err)
 			}
-			ui.PrintSuccess(ui.GetText("global_created"))
-			sources = defaultSources
+			if globalCfg == nil {
+				return fmt.Errorf("configuration was not saved correctly")
+			}
+			sources = globalCfg.SkillsSources
 		} else {
 			ui.PrintInfo(ui.GetText("using_global"))
 			sources = globalCfg.SkillsSources
