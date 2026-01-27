@@ -44,6 +44,8 @@ No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice 
    ↳ Requisito: Drizzle ORM, Postgres 3NF, Zod Validation.
 • ⚡ Framework / Logic    → Lee skills/web/framework/ (nextjs.md)
    ↳ Requisito: Next.js 16, Server Actions, 'use client' en hojas.
+• 🐹 Backend / Golang     → Lee skills/golang/core.md
+   ↳ Requisito: Go 1.22+, errgroup, estructura cmd/internal.
 
 ═══════════════════════════════════════════════════════════════════════
 `
