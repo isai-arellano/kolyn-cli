@@ -1,20 +1,27 @@
 # Agent Context - kolyn-cli
 
-Kolyn Version: v0.2.0
-Creado: 2026-01-19
+Kolyn Version: v0.2.13
+Generated: 2026-01-27
+Project Type: go
+
+## Features
+- core
+
+---
+
+## Project Context
+
+### Stack & Architecture
+This project uses the following stack conventions:
+- **Type:** GO
 
 
+### Skills Reference
+The following skills are active for this project. Use 'kolyn skills paths' to find more.
 
-═══════════════════════════════════════════════════════════════════════
-KOLYN
-═══════════════════════════════════════════════════════════════════════
+- [Golang Core](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/backend/go/core.md)
 
-kolyn init           → Inicializa kolyn en el proyecto
-kolyn skills         → JSON con skills disponibles para la IA
-kolyn skills list    → Lista skills y permite ver/editar contenido
-kolyn skills paths   → Retorna solo las rutas de skills
-kolyn docker up      → Levanta servicios Docker (n8n, postgres, etc.)
-kolyn docker list    → Lista servicios Docker y su estado
-kolyn docker down    → Detiene servicios Docker levantados
-
-═══════════════════════════════════════════════════════════════════════
+### Rules
+1. **Follow the Skills:** Read the reference files above before writing code.
+2. **Directory Structure:** Respect the existing project structure.
+3. **Consistency:** Use the same libraries and patterns defined in the stack.

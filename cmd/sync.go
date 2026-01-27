@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,73 +15,47 @@ import (
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Sincroniza skills (Globales o del Proyecto)",
-	Long: `Descarga y actualiza repositorios de skills.
-	
-Prioridad:
-1. Archivo local .kolyn.json (si existe)
-2. Configuración global ~/.kolyn/config.json`,
+	Short: "Sincroniza skills (Globales)",
+	Long:  `Descarga y actualiza repositorios de skills definidos en ~/.kolyn/config.json.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSyncCommand(cmd.Context())
 	},
 }
 
-type KolynConfig struct {
-	ProjectName   string   `json:"project_name"`
-	SkillsSources []string `json:"skills_sources"`
-}
-
 func runSyncCommand(ctx context.Context) error {
-	// 1. Intentar cargar config global para setear idioma (si existe)
+	// 1. Cargar config global
 	globalCfg, _ := config.LoadGlobalConfig()
 	if globalCfg != nil {
 		ui.CurrentLanguage = globalCfg.Language
 	}
 
-	// 2. Verificar si hay config local (.kolyn.json)
-	cwd, _ := os.Getwd()
-	localConfigPath := filepath.Join(cwd, ".kolyn.json")
 	var sources []string
-	var mode string // "local" or "global"
 
-	if _, err := os.Stat(localConfigPath); err == nil {
-		// --- MODO LOCAL ---
-		ui.PrintInfo(ui.GetText("using_local"))
-		localCfg, err := loadLocalConfig(localConfigPath)
-		if err != nil {
+	if globalCfg == nil {
+		// Primera vez que corre: Setup inicial interactivo
+		ui.PrintInfo(ui.GetText("no_config"))
+
+		if err := runConfigInit(ctx); err != nil {
 			return err
 		}
-		sources = localCfg.SkillsSources
-		mode = "local"
-	} else {
-		// --- MODO GLOBAL ---
-		if globalCfg == nil {
-			// Primera vez que corre: Setup inicial interactivo
-			ui.PrintInfo(ui.GetText("no_config"))
 
-			if err := runConfigInit(ctx); err != nil {
-				return err
-			}
-
-			// Recargar la configuración recién creada
-			globalCfg, err = config.LoadGlobalConfig()
-			if err != nil {
-				return fmt.Errorf("error reloading global config: %w", err)
-			}
-			if globalCfg == nil {
-				return fmt.Errorf("configuration was not saved correctly")
-			}
-			sources = globalCfg.SkillsSources
-		} else {
-			ui.PrintInfo(ui.GetText("using_global"))
-			sources = globalCfg.SkillsSources
+		// Recargar la configuración recién creada
+		globalCfg, err := config.LoadGlobalConfig()
+		if err != nil {
+			return fmt.Errorf("error reloading global config: %w", err)
 		}
-		mode = "global"
+		if globalCfg == nil {
+			return fmt.Errorf("configuration was not saved correctly")
+		}
+		sources = globalCfg.SkillsSources
+	} else {
+		ui.PrintInfo(ui.GetText("using_global"))
+		sources = globalCfg.SkillsSources
 	}
 
 	ui.ShowSection(ui.GetText("sync_start"))
 
-	// 3. Preparar directorio de sources
+	// 2. Preparar directorio de sources
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("error getting home dir: %w", err)
@@ -93,7 +66,7 @@ func runSyncCommand(ctx context.Context) error {
 		return fmt.Errorf("error creating sources dir: %w", err)
 	}
 
-	// 4. Procesar fuentes
+	// 3. Procesar fuentes
 	for _, sourceURL := range sources {
 		if err := syncSource(ctx, sourceURL, sourcesBaseDir); err != nil {
 			ui.PrintError("Fallo al sincronizar %s: %v", sourceURL, err)
@@ -102,23 +75,7 @@ func runSyncCommand(ctx context.Context) error {
 
 	ui.PrintSuccess(ui.GetText("sync_success"))
 
-	if mode == "global" {
-		ui.Gray.Println("\nTip: Si quieres skills específicas para un proyecto, crea un archivo .kolyn.json en la raíz del proyecto.")
-	}
-
 	return nil
-}
-
-func loadLocalConfig(path string) (*KolynConfig, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var cfg KolynConfig
-	if err := json.Unmarshal(content, &cfg); err != nil {
-		return nil, fmt.Errorf("error parsing .kolyn.json: %w", err)
-	}
-	return &cfg, nil
 }
 
 func syncSource(ctx context.Context, url, baseDir string) error {

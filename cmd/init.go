@@ -14,44 +14,21 @@ import (
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Inicializa kolyn y agrega contexto al Agent.md",
-	Long:  `Agrega información de kolyn al Agent.md para que la IA tenga contexto de cómo usar kolyn CLI.`,
+	Short: "Inicializa kolyn y genera Agent.md",
+	Long:  `Analiza el proyecto y genera un archivo Agent.md personalizado con las skills y reglas necesarias para la IA.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runInitCommand(cmd.Context())
 	},
 }
 
-const kolynContextTemplate = `
-═══════════════════════════════════════════════════════════════════════
-KOLYN CONTEXT & TOOLS
-═══════════════════════════════════════════════════════════════════════
-
-⚠️ TOKEN ECONOMY NOTICE:
-No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice y lee SOLO el archivo específico que necesites para la tarea actual.
-
-🛠 COMMANDS:
-• kolyn skills paths        → Muestra rutas de skills (Índice Maestro)
-• kolyn check               → Audita que el proyecto cumpla con las skills (Deps, Files)
-• kolyn status              → Ver servicios Docker corriendo
-• kolyn up                  → Levantar infraestructura (DBs, n8n, etc)
-• kolyn scaffold            → Generar/Auditar estructura de proyecto
-
-📌 SKILL MAP (Si vas a tocar X, lee Y):
-• 🎨 UI / Components      → Lee skills/web/ui/ (shadcn.md, stack.md)
-   ↳ Requisito: Framer Motion, React Icons, Sonner, Tailwind+CVA.
-• 🔐 Auth / Sessions      → Lee skills/web/auth/ (better-auth.md)
-   ↳ Requisito: Better Auth, Plugins, Secure Cookies.
-• 💾 Data / DB / Schema   → Lee skills/web/data/ (drizzle.md, postgres.md, zod.md)
-   ↳ Requisito: Drizzle ORM, Postgres 3NF, Zod Validation.
-• ⚡ Framework / Logic    → Lee skills/web/framework/ (nextjs.md)
-   ↳ Requisito: Next.js 16, Server Actions, 'use client' en hojas.
-• 🐹 Backend / Golang     → Lee skills/backend/go/core.md
-   ↳ Requisito: Go 1.22+, errgroup, estructura cmd/internal.
-• 🚀 DevOps / CI/CD       → Lee skills/devops/ci-cd.md
-   ↳ Requisito: GitHub Actions, Dokploy, Neon Branching.
-
-═══════════════════════════════════════════════════════════════════════
-`
+type ProjectFeatures struct {
+	Type     string
+	UI       bool
+	Database bool
+	Auth     bool
+	API      bool
+	DevOps   bool
+}
 
 func runInitCommand(ctx context.Context) error {
 	cwd, err := os.Getwd()
@@ -61,110 +38,191 @@ func runInitCommand(ctx context.Context) error {
 
 	ui.ShowSection("🚀 Inicializando Kolyn")
 
+	// 1. Detección automática
+	ui.PrintStep("Detectando tipo de proyecto...")
+	pType := detectProjectType(cwd)
+	ui.Cyan.Printf("   🔍 Tipo detectado: %s\n\n", strings.ToUpper(pType))
+
 	agentPath := filepath.Join(cwd, "Agent.md")
 
-	agentInfo, err := os.Stat(agentPath)
+	// 2. Advertencia si existe
+	if _, err := os.Stat(agentPath); err == nil {
+		ui.YellowText.Println("⚠️  Ya existe un archivo Agent.md en este proyecto.")
+		ui.YellowText.Println("   Si continúas, se regenerará y perderás cambios manuales.")
+		if !ui.AskYesNo("¿Deseas continuar?") {
+			ui.PrintInfo("Operación cancelada.")
+			return nil
+		}
+	}
 
-	if err == nil && agentInfo.IsDir() {
-		ui.PrintWarning("Agent.md es un directorio")
-		return nil
-	} else if err == nil && !agentInfo.IsDir() {
-		if err := updateAgentMD(agentPath); err != nil {
-			ui.PrintWarning("No se pudo actualizar Agent.md: %v", err)
-		} else {
-			ui.PrintSuccess("Agent.md actualizado")
-		}
-	} else {
-		ui.PrintStep("Creando Agent.md con contexto de kolyn...")
-		if err := createAgentWithKolyn(cwd); err != nil {
-			return fmt.Errorf("error creando Agent.md: %w", err)
-		}
-		ui.PrintSuccess("Agent.md creado")
+	// 3. Preguntas Interactivas
+	ui.PrintStep("Configurando features del proyecto:")
+
+	features := ProjectFeatures{Type: pType}
+
+	features.UI = ui.AskYesNo("❓ ¿Tu proyecto usa componentes de UI? (shadcn, MUI, etc.)")
+	features.Database = ui.AskYesNo("❓ ¿Tu proyecto tiene base de datos?")
+	features.Auth = ui.AskYesNo("❓ ¿Tu proyecto tiene autenticación de usuarios?")
+	features.API = ui.AskYesNo("❓ ¿Tu proyecto consume APIs externas?")
+	features.DevOps = ui.AskYesNo("❓ ¿Tienes configurado CI/CD?")
+
+	// 4. Generar Agent.md
+	if err := generateAgentMD(cwd, features); err != nil {
+		return err
 	}
 
 	ui.Separator()
-	ui.PrintSuccess("Kolyn inicializado!")
+	ui.PrintSuccess("✅ Agent.md generado exitosamente.")
+	ui.Gray.Println("Ahora puedes ejecutar 'kolyn check' para auditar el proyecto.")
 
 	return nil
 }
 
-func updateAgentMD(agentPath string) error {
-	content, err := os.ReadFile(agentPath)
-	if err != nil {
-		return fmt.Errorf("error leyendo Agent.md: %w", err)
+func detectProjectType(root string) string {
+	// 1. Next.js
+	if exists(filepath.Join(root, "next.config.ts")) ||
+		exists(filepath.Join(root, "next.config.js")) ||
+		exists(filepath.Join(root, "next.config.mjs")) {
+		return "nextjs"
 	}
 
-	contentStr := string(content)
-
-	if strings.Contains(contentStr, "KOLYN") {
-		ui.PrintStep("Actualizando contexto de kolyn en Agent.md...")
-		newContent := removeKolynBlock(contentStr)
-		newContent = strings.TrimRight(newContent, "\n") + "\n" + kolynContextTemplate
-		if err := os.WriteFile(agentPath, []byte(newContent), 0644); err != nil {
-			return fmt.Errorf("error escribiendo Agent.md: %w", err)
-		}
-		return nil
+	// 2. Go
+	if exists(filepath.Join(root, "go.mod")) {
+		return "go"
 	}
 
-	ui.PrintStep("Agregando contexto de kolyn al Agent.md...")
-	newContent := contentStr + "\n" + kolynContextTemplate
-	if err := os.WriteFile(agentPath, []byte(newContent), 0644); err != nil {
-		return fmt.Errorf("error escribiendo Agent.md: %w", err)
+	// 3. Python
+	if exists(filepath.Join(root, "requirements.txt")) ||
+		exists(filepath.Join(root, "pyproject.toml")) {
+		return "python"
 	}
 
-	return nil
+	// 4. Node Generic
+	if exists(filepath.Join(root, "package.json")) {
+		return "node"
+	}
+
+	return "generic"
 }
 
-func removeKolynBlock(content string) string {
-	lines := strings.Split(content, "\n")
-	var result []string
-	skipMode := false
-	currentIdx := -1
-
-	for _, line := range lines {
-		currentIdx++
-		trimmed := strings.TrimSpace(line)
-
-		// Detect start of block (heuristic)
-		if trimmed == "KOLYN" || (strings.Contains(line, "═") && strings.Contains(line, "KOLYN")) {
-			skipMode = true
-			continue
-		}
-
-		if skipMode {
-			// Check for end of block: a line starting with ═ that is not the start
-			if strings.HasPrefix(trimmed, "═") && trimmed != "" {
-				// Look ahead to see if this is truly the end (followed by non-empty content not part of block)
-				// Or just assume it closes the block.
-				// The original logic was complex. Let's simplify:
-				// The block ends with a separator line.
-				skipMode = false
-				continue
-			}
-			continue
-		}
-
-		result = append(result, line)
-	}
-
-	return strings.TrimRight(strings.Join(result, "\n"), "\n")
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
-func createAgentWithKolyn(projectPath string) error {
-	projectName := filepath.Base(projectPath)
+func generateAgentMD(root string, f ProjectFeatures) error {
+	projectName := filepath.Base(root)
 
-	agentContent := fmt.Sprintf(`# Agent Context - %s
+	// Construir lista de features activas
+	var activeFeatures []string
+	if f.UI {
+		activeFeatures = append(activeFeatures, "ui")
+	}
+	if f.Database {
+		activeFeatures = append(activeFeatures, "database")
+	}
+	if f.Auth {
+		activeFeatures = append(activeFeatures, "auth")
+	}
+	if f.API {
+		activeFeatures = append(activeFeatures, "api")
+	}
+	if f.DevOps {
+		activeFeatures = append(activeFeatures, "devops")
+	}
+
+	// Construir lista de referencias sugeridas (esto podría ser dinámico, pero por ahora estático es mejor para velocidad)
+	var refs []string
+
+	// Base references based on type
+	if f.Type == "nextjs" {
+		refs = append(refs, "- [Next.js Framework](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/framework/nextjs.md)")
+	}
+	if f.Type == "go" {
+		refs = append(refs, "- [Golang Core](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/backend/go/core.md)")
+	}
+
+	// Feature references
+	if f.UI {
+		refs = append(refs, "- [Shadcn UI](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/ui/shadcn.md)")
+		refs = append(refs, "- [UI Stack](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/ui/stack.md)")
+	}
+	if f.Database {
+		refs = append(refs, "- [Drizzle ORM](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/data/drizzle.md)")
+		refs = append(refs, "- [PostgreSQL](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/data/postgres.md)")
+	}
+	if f.Auth {
+		refs = append(refs, "- [Better Auth](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/auth/better-auth.md)")
+	}
+	if f.API || f.Type == "nextjs" { // Zod is almost always useful in web
+		refs = append(refs, "- [Zod Validation](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/data/zod.md)")
+	}
+	if f.DevOps {
+		refs = append(refs, "- [CI/CD](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/devops/ci-cd.md)")
+	}
+
+	content := fmt.Sprintf(`# Agent Context - %s
 
 Kolyn Version: %s
-Creado: %s
+Generated: %s
+Project Type: %s
 
-%s`, projectName, Version, time.Now().Format("2006-01-02"), kolynContextTemplate)
+## Features
+%s
 
-	agentPath := filepath.Join(projectPath, "Agent.md")
+---
 
-	if err := os.WriteFile(agentPath, []byte(agentContent), 0644); err != nil {
-		return fmt.Errorf("error creando Agent.md: %w", err)
+## Project Context
+
+### Stack & Architecture
+This project uses the following stack conventions:
+- **Type:** %s
+%s
+
+### Skills Reference
+The following skills are active for this project. Use 'kolyn skills paths' to find more.
+
+%s
+
+### Rules
+1. **Follow the Skills:** Read the reference files above before writing code.
+2. **Directory Structure:** Respect the existing project structure.
+3. **Consistency:** Use the same libraries and patterns defined in the stack.
+`,
+		projectName,
+		Version,
+		time.Now().Format("2006-01-02"),
+		f.Type,
+		formatList(activeFeatures),
+		strings.ToUpper(f.Type),
+		getStackSummary(f),
+		strings.Join(refs, "\n"),
+	)
+
+	return os.WriteFile(filepath.Join(root, "Agent.md"), []byte(content), 0644)
+}
+
+func formatList(items []string) string {
+	if len(items) == 0 {
+		return "- core"
 	}
+	var sb strings.Builder
+	for _, item := range items {
+		sb.WriteString(fmt.Sprintf("- %s\n", item))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
 
-	return nil
+func getStackSummary(f ProjectFeatures) string {
+	var summary strings.Builder
+	if f.UI {
+		summary.WriteString("- **UI:** Shadcn/UI + Tailwind\n")
+	}
+	if f.Database {
+		summary.WriteString("- **Database:** Drizzle ORM + PostgreSQL\n")
+	}
+	if f.Auth {
+		summary.WriteString("- **Auth:** Better Auth\n")
+	}
+	return strings.TrimRight(summary.String(), "\n")
 }
