@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/isai-arellano/kolyn-cli/cmd/config"
 	"github.com/isai-arellano/kolyn-cli/cmd/ui"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -17,12 +18,7 @@ var checkCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Audita el proyecto contra las reglas definidas en las skills",
 	Long: `Escanea las skills instaladas en busca de reglas de validación (Frontmatter)
-y verifica si el proyecto actual las cumple.
-
-Reglas soportadas en las skills:
-- required_deps: Dependencias que DEBEN estar en package.json
-- forbidden_deps: Dependencias que NO deben estar
-- files_exist: Archivos clave que deben existir`,
+y verifica si el proyecto actual las cumple.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runCheck(cmd.Context())
 	},
@@ -44,22 +40,28 @@ type PackageJSON struct {
 }
 
 func runCheck(ctx context.Context) error {
-	ui.ShowSection("🕵️  Kolyn Check - Auditoría de Proyecto")
-
-	// 1. Cargar package.json del proyecto actual
-	pkg, err := loadPackageJSON(".")
-	if err != nil {
-		ui.PrintWarning("No se encontró package.json. Se omitirán chequeos de dependencias.")
+	// 1. Cargar idioma desde config global
+	globalCfg, _ := config.LoadGlobalConfig()
+	if globalCfg != nil {
+		ui.CurrentLanguage = globalCfg.Language
 	}
 
-	// 2. Obtener skills disponibles
+	ui.ShowSection(ui.GetText("check_start"))
+
+	// 2. Cargar package.json del proyecto actual
+	pkg, err := loadPackageJSON(".")
+	if err != nil {
+		ui.PrintWarning(ui.GetText("no_package_json"))
+	}
+
+	// 3. Obtener skills disponibles
 	skills, err := scanSkills(ctx)
 	if err != nil {
 		return fmt.Errorf("error leyendo skills: %w", err)
 	}
 
 	if len(skills) == 0 {
-		ui.PrintWarning("No hay skills instaladas para auditar.")
+		ui.PrintWarning(ui.GetText("no_skills"))
 		return nil
 	}
 
@@ -67,20 +69,18 @@ func runCheck(ctx context.Context) error {
 	passedChecks := 0
 	warnings := 0
 
-	// 3. Iterar skills y validar
+	// 4. Iterar skills y validar
 	for _, skill := range skills {
 		rules, err := parseSkillRules(skill.Path)
 		if err != nil {
-			// Si no tiene frontmatter o es inválido, simplemente lo ignoramos o logueamos verbose
 			continue
 		}
 
-		// Si el skill no tiene reglas de check, saltar
 		if len(rules.Check.RequiredDeps) == 0 && len(rules.Check.ForbiddenDeps) == 0 && len(rules.Check.FilesExist) == 0 {
 			continue
 		}
 
-		ui.WhiteText.Printf("\nEvaluando Skill: %s/%s\n", skill.Category, skill.Name)
+		ui.WhiteText.Printf(ui.GetText("evaluating_skill", skill.Category, skill.Name))
 		skillPassed := true
 
 		// Check Required Deps
@@ -88,11 +88,11 @@ func runCheck(ctx context.Context) error {
 			for _, dep := range rules.Check.RequiredDeps {
 				totalChecks++
 				if !hasDependency(pkg, dep) {
-					ui.PrintFail("  ❌ Falta dependencia: %s", dep)
+					ui.PrintFail(ui.GetText("missing_dep", dep))
 					skillPassed = false
 					warnings++
 				} else {
-					ui.PrintSuccess("  ✅ Dependencia encontrada: %s", dep)
+					ui.PrintSuccess(ui.GetText("found_dep", dep))
 					passedChecks++
 				}
 			}
@@ -101,7 +101,7 @@ func runCheck(ctx context.Context) error {
 			for _, dep := range rules.Check.ForbiddenDeps {
 				totalChecks++
 				if hasDependency(pkg, dep) {
-					ui.PrintFail("  ❌ Dependencia prohibida detectada: %s", dep)
+					ui.PrintFail(ui.GetText("forbidden_dep", dep))
 					skillPassed = false
 					warnings++
 				} else {
@@ -114,25 +114,25 @@ func runCheck(ctx context.Context) error {
 		for _, file := range rules.Check.FilesExist {
 			totalChecks++
 			if _, err := os.Stat(file); os.IsNotExist(err) {
-				ui.PrintFail("  ❌ Falta archivo: %s", file)
+				ui.PrintFail(ui.GetText("missing_file", file))
 				skillPassed = false
 				warnings++
 			} else {
-				ui.PrintSuccess("  ✅ Archivo encontrado: %s", file)
+				ui.PrintSuccess(ui.GetText("found_file", file))
 				passedChecks++
 			}
 		}
 
 		if skillPassed {
-			// ui.Gray.Println("  ✨ Skill cumple con los estándares")
+			// ui.Gray.Println("  ✨ Skill OK")
 		}
 	}
 
 	ui.Separator()
-	fmt.Printf("Resumen: %d verificaciones, %d pasadas, %d alertas\n", totalChecks, passedChecks, warnings)
+	fmt.Println(ui.GetText("audit_summary", totalChecks, passedChecks, warnings))
 
 	if warnings > 0 {
-		return fmt.Errorf("se encontraron %d problemas en la auditoría", warnings)
+		return fmt.Errorf(ui.GetText("audit_issues", warnings))
 	}
 
 	return nil
@@ -144,7 +144,6 @@ func parseSkillRules(path string) (*SkillRules, error) {
 		return nil, err
 	}
 
-	// Extraer bloque YAML entre --- y ---
 	if !bytes.HasPrefix(content, []byte("---")) {
 		return nil, fmt.Errorf("no frontmatter")
 	}

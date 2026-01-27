@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,22 +9,19 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/isai-arellano/kolyn-cli/cmd/config"
 	"github.com/isai-arellano/kolyn-cli/cmd/ui"
 	"github.com/spf13/cobra"
 )
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Sincroniza skills desde fuentes externas definidas en .kolyn.json",
-	Long: `Descarga y actualiza repositorios de skills definidos en el archivo .kolyn.json del proyecto actual.
+	Short: "Sincroniza skills (Globales o del Proyecto)",
+	Long: `Descarga y actualiza repositorios de skills.
 	
-Ejemplo de .kolyn.json:
-{
-  "project_name": "mi-proyecto",
-  "skills_sources": [
-    "https://github.com/mi-org/backend-standards.git"
-  ]
-}`,
+Prioridad:
+1. Archivo local .kolyn.json (si existe)
+2. Configuración global ~/.kolyn/config.json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSyncCommand(cmd.Context())
 	},
@@ -37,133 +33,99 @@ type KolynConfig struct {
 }
 
 func runSyncCommand(ctx context.Context) error {
-	// 1. Leer configuración
-	config, err := loadProjectConfig(ctx)
-	if err != nil {
-		return err
+	// 1. Intentar cargar config global para setear idioma (si existe)
+	globalCfg, _ := config.LoadGlobalConfig()
+	if globalCfg != nil {
+		ui.CurrentLanguage = globalCfg.Language
 	}
 
-	if config == nil {
-		// User cancelled creation
-		return nil
+	// 2. Verificar si hay config local (.kolyn.json)
+	cwd, _ := os.Getwd()
+	localConfigPath := filepath.Join(cwd, ".kolyn.json")
+	var sources []string
+	var mode string // "local" or "global"
+
+	if _, err := os.Stat(localConfigPath); err == nil {
+		// --- MODO LOCAL ---
+		ui.PrintInfo(ui.GetText("using_local"))
+		localCfg, err := loadLocalConfig(localConfigPath)
+		if err != nil {
+			return err
+		}
+		sources = localCfg.SkillsSources
+		mode = "local"
+	} else {
+		// --- MODO GLOBAL ---
+		if globalCfg == nil {
+			// Primera vez que corre: Setup inicial
+			ui.PrintInfo(ui.GetText("no_config"))
+
+			// Seleccionar idioma
+			lang := ui.SelectLanguage()
+			ui.CurrentLanguage = lang
+
+			// Default sources
+			defaultSources := []string{
+				"https://github.com/isai-arellano/kolyn-cli.git", // Self-reference for skills
+			}
+
+			// Guardar config global
+			newGlobal := &config.GlobalConfig{
+				Language:      lang,
+				SkillsSources: defaultSources,
+			}
+
+			if err := config.SaveGlobalConfig(newGlobal); err != nil {
+				return fmt.Errorf("error saving global config: %w", err)
+			}
+			ui.PrintSuccess(ui.GetText("global_created"))
+			sources = defaultSources
+		} else {
+			ui.PrintInfo(ui.GetText("using_global"))
+			sources = globalCfg.SkillsSources
+		}
+		mode = "global"
 	}
 
-	ui.ShowSection(fmt.Sprintf("🔄 Sincronizando Skills para: %s", config.ProjectName))
+	ui.ShowSection(ui.GetText("sync_start"))
 
-	// 2. Preparar directorio de sources
+	// 3. Preparar directorio de sources
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("error obteniendo directorio home: %w", err)
+		return fmt.Errorf("error getting home dir: %w", err)
 	}
 
 	sourcesBaseDir := filepath.Join(homeDir, ".kolyn", "sources")
 	if err := os.MkdirAll(sourcesBaseDir, 0755); err != nil {
-		return fmt.Errorf("error creando directorio de sources: %w", err)
+		return fmt.Errorf("error creating sources dir: %w", err)
 	}
 
-	// 3. Procesar cada fuente
-	for _, sourceURL := range config.SkillsSources {
+	// 4. Procesar fuentes
+	for _, sourceURL := range sources {
 		if err := syncSource(ctx, sourceURL, sourcesBaseDir); err != nil {
 			ui.PrintError("Fallo al sincronizar %s: %v", sourceURL, err)
 		}
 	}
 
-	ui.PrintSuccess("Sincronización completada!")
+	ui.PrintSuccess(ui.GetText("sync_success"))
+
+	if mode == "global" {
+		ui.Gray.Println("\nTip: Si quieres skills específicas para un proyecto, crea un archivo .kolyn.json en la raíz del proyecto.")
+	}
+
 	return nil
 }
 
-func loadProjectConfig(ctx context.Context) (*KolynConfig, error) {
-	cwd, err := os.Getwd()
+func loadLocalConfig(path string) (*KolynConfig, error) {
+	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("error obteniendo directorio actual: %w", err)
+		return nil, err
 	}
-
-	configPath := filepath.Join(cwd, ".kolyn.json")
-
-	content, err := os.ReadFile(configPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return promptCreateConfig(ctx, configPath)
-		}
-		return nil, fmt.Errorf("error leyendo config: %w", err) // wrap unknown errors
+	var cfg KolynConfig
+	if err := json.Unmarshal(content, &cfg); err != nil {
+		return nil, fmt.Errorf("error parsing .kolyn.json: %w", err)
 	}
-
-	var config KolynConfig
-	if err := json.Unmarshal(content, &config); err != nil {
-		return nil, fmt.Errorf("error parseando JSON de configuración: %w", err)
-	}
-
-	return &config, nil
-}
-
-func promptCreateConfig(ctx context.Context, configPath string) (*KolynConfig, error) {
-	ui.PrintWarning("No se encontró .kolyn.json en el directorio actual.")
-	fmt.Println()
-	ui.YellowText.Println("¿Deseas crear un archivo de configuración ahora? [s/N]: ")
-	fmt.Print("> ")
-
-	reader := bufio.NewReader(os.Stdin)
-	answer, err := readInput(reader)
-	if err != nil {
-		return nil, fmt.Errorf("error leyendo entrada: %w", err)
-	}
-
-	if strings.ToLower(answer) != "s" && strings.ToLower(answer) != "si" && strings.ToLower(answer) != "yes" && strings.ToLower(answer) != "y" {
-		ui.PrintInfo("Operación cancelada. Crea un archivo .kolyn.json manualmente para continuar.")
-		return nil, nil // return nil config to signal cancellation without error
-	}
-
-	// 1. Project Name
-	cwd, _ := os.Getwd()
-	defaultName := filepath.Base(cwd)
-
-	fmt.Printf("Nombre del proyecto [%s]: ", defaultName)
-	projectName, err := readInput(reader)
-	if err != nil {
-		return nil, fmt.Errorf("error leyendo entrada: %w", err)
-	}
-	if projectName == "" {
-		projectName = defaultName
-	}
-
-	// 2. Repo URLs
-	var sources []string
-	ui.Gray.Println("Ingresa las URLs de los repositorios de skills (una por línea).")
-	ui.Gray.Println("Deja la línea vacía y presiona Enter para terminar.")
-
-	for {
-		fmt.Print("Repo URL: ")
-		url, err := readInput(reader)
-		if err != nil {
-			return nil, fmt.Errorf("error leyendo entrada: %w", err)
-		}
-		if url == "" {
-			break
-		}
-		sources = append(sources, url)
-	}
-
-	if len(sources) == 0 {
-		ui.PrintWarning("No se ingresaron repositorios. El archivo se creará sin sources.")
-	}
-
-	config := KolynConfig{
-		ProjectName:   projectName,
-		SkillsSources: sources,
-	}
-
-	// Write file
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("error generando JSON: %w", err)
-	}
-
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
-		return nil, fmt.Errorf("error escribiendo .kolyn.json: %w", err)
-	}
-
-	ui.PrintSuccess("Archivo .kolyn.json creado exitosamente!")
-	return &config, nil
+	return &cfg, nil
 }
 
 func syncSource(ctx context.Context, url, baseDir string) error {
@@ -171,27 +133,44 @@ func syncSource(ctx context.Context, url, baseDir string) error {
 	targetDir := filepath.Join(baseDir, folderName)
 
 	if _, err := os.Stat(targetDir); err == nil {
-		// Existe: hacer pull
-		ui.PrintStep("Actualizando %s...", folderName)
+		// Update
+		ui.PrintStep(ui.GetText("updating_skills", folderName))
 		cmd := exec.CommandContext(ctx, "git", "pull")
 		cmd.Dir = targetDir
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git pull falló: %s (%w)", string(output), err)
+		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0") // Prevent hanging
+
+		output, err := cmd.CombinedOutput()
+		outputStr := string(output)
+
+		if err != nil {
+			if strings.Contains(outputStr, "Permission denied") ||
+				strings.Contains(outputStr, "Authentication failed") {
+				return fmt.Errorf("\n❌ %s\n%s", ui.GetText("repo_access_error"), outputStr)
+			}
+			return fmt.Errorf("git pull failed: %s (%w)", outputStr, err)
 		}
 	} else {
-		// No existe: hacer clone
-		ui.PrintStep("Descargando %s...", url)
+		// Clone
+		ui.PrintStep(ui.GetText("installing_skills", url))
 		cmd := exec.CommandContext(ctx, "git", "clone", url, targetDir)
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git clone falló: %s (%w)", string(output), err)
+		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0") // Prevent hanging
+
+		output, err := cmd.CombinedOutput()
+		outputStr := string(output)
+
+		if err != nil {
+			if strings.Contains(outputStr, "Permission denied") ||
+				strings.Contains(outputStr, "Authentication failed") ||
+				strings.Contains(outputStr, "could not read Username") {
+				return fmt.Errorf("\n❌ %s\n%s", ui.GetText("repo_access_error"), outputStr)
+			}
+			return fmt.Errorf("git clone failed: %s (%w)", outputStr, err)
 		}
 	}
-
 	return nil
 }
 
 func sanitizeRepoName(url string) string {
-	// Limpieza básica: quitar protocolo, .git y reemplazar barras
 	name := url
 	name = strings.TrimPrefix(name, "https://")
 	name = strings.TrimPrefix(name, "http://")
