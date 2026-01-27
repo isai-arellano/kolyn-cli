@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -215,53 +214,47 @@ func runDockerUpCommand(ctx context.Context) error {
 		return err
 	}
 
-	ui.ShowSection("🚀 Kolyn Up - Levantar Servicios")
+	ui.ShowSection(ui.GetText("docker_up_title"))
 
 	if len(templates) == 0 {
-		ui.PrintWarning("No se encontraron templates en ~/.kolyn/templates/")
+		ui.PrintWarning(ui.GetText("docker_up_no_templates"))
 		return nil
 	}
 
-	fmt.Println("Selecciona un servicio para levantar:\n")
+	fmt.Println(ui.GetText("docker_up_select"))
 
 	for i, t := range templates {
-		ui.WhiteText.Printf("  %d. %-25s (puerto: %s)\n", i+1, t.Name, t.Port)
+		ui.WhiteText.Printf("  %d. %-25s %s\n", i+1, t.Name, ui.GetText("docker_up_port", t.Port))
 	}
-	ui.Gray.Println("  0. Cancelar")
+	ui.Gray.Println(ui.GetText("docker_up_cancel_opt"))
 	fmt.Println()
 
 	homeDir, _ := os.UserHomeDir()
-	ui.Gray.Printf("💡 Tip: Agrega tus propios .yml en %s\n\n", filepath.Join(homeDir, ".kolyn", "templates"))
+	ui.Gray.Printf(ui.GetText("docker_up_tip", filepath.Join(homeDir, ".kolyn", "templates")))
 
-	fmt.Print("Selecciona: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	selection, err := readInput(reader)
-	if err != nil {
-		return err
-	}
+	selection := ui.ReadInput(ui.GetText("docker_up_input"))
 
 	if selection == "0" || selection == "" {
-		ui.PrintInfo("Operación cancelada")
+		ui.PrintInfo(ui.GetText("uninstall_cancel")) // Reusing "Operation canceled"
 		return nil
 	}
 
 	var idx int
 	if _, err := fmt.Sscan(selection, &idx); err != nil {
-		ui.PrintWarning("Selección inválida")
+		ui.PrintWarning(ui.GetText("docker_up_invalid"))
 		return nil
 	}
 
 	if idx < 1 || idx > len(templates) {
-		ui.PrintWarning("Selección inválida")
+		ui.PrintWarning(ui.GetText("docker_up_invalid"))
 		return nil
 	}
 
 	template := templates[idx-1]
-	return startService(ctx, template, reader)
+	return startService(ctx, template)
 }
 
-func startService(ctx context.Context, t ComposeTemplate, reader *bufio.Reader) error {
+func startService(ctx context.Context, t ComposeTemplate) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("error obteniendo home dir: %w", err)
@@ -269,56 +262,44 @@ func startService(ctx context.Context, t ComposeTemplate, reader *bufio.Reader) 
 	dockerDir := filepath.Join(homeDir, ".kolyn", "services", t.Service)
 
 	if _, err := os.Stat(dockerDir); err == nil {
-		ui.PrintWarning("El servicio '%s' ya existe en: %s", t.Name, dockerDir)
+		ui.PrintWarning(ui.GetText("docker_up_exists", t.Name, dockerDir))
 		fmt.Println()
-		ui.WhiteText.Println("  1. Sobrescribir (regenerar compose)")
-		ui.WhiteText.Println("  2. Levantar (iniciar servicio existente)")
-		ui.Gray.Println("  0. Cancelar")
+		ui.WhiteText.Println(ui.GetText("docker_up_overwrite"))
+		ui.WhiteText.Println(ui.GetText("docker_up_lift"))
+		ui.Gray.Println(ui.GetText("docker_up_cancel_opt"))
 		fmt.Println()
-		fmt.Print("Selecciona una opción: ")
 
-		answer, err := readInput(reader)
-		if err != nil {
-			return err
-		}
+		answer := ui.ReadInput(ui.GetText("docker_up_input"))
 
 		switch answer {
 		case "1":
-			ui.PrintStep("Sobrescribiendo compose...")
+			ui.PrintStep(ui.GetText("docker_up_overwriting"))
 		case "2":
 			return liftExistingService(ctx, dockerDir, t)
 		default:
-			ui.PrintInfo("Operación cancelada")
+			ui.PrintInfo(ui.GetText("uninstall_cancel"))
 			return nil
 		}
 	} else {
-		ui.PrintStep("Creando directorio: %s", dockerDir)
+		ui.PrintStep("Creando directorio: %s", dockerDir) // This could be localized too but is debug-ish. Leaving for now or adding quick fix.
 		if err := os.MkdirAll(dockerDir, 0755); err != nil {
 			return fmt.Errorf("error creando directorio: %w", err)
 		}
 	}
 
 	composePath := filepath.Join(dockerDir, "docker-compose.yml")
-	ui.PrintStep("Generando %s...", composePath)
+	ui.PrintStep(ui.GetText("docker_up_generating", composePath))
 
 	// Usar el contenido directo del template
 	if err := os.WriteFile(composePath, []byte(t.Content), 0644); err != nil {
 		return fmt.Errorf("error escribiendo compose: %w", err)
 	}
 
-	ui.PrintSuccess("docker-compose.yml creado!")
-
+	ui.PrintSuccess(ui.GetText("docker_up_created"))
 	fmt.Println()
-	ui.YellowText.Println("¿Deseas levantar el servicio ahora? [s/n]: ")
-	fmt.Print("> ")
 
-	answer, err := readInput(reader)
-	if err != nil {
-		return err
-	}
-
-	if strings.ToLower(answer) == "s" || strings.ToLower(answer) == "si" || strings.ToLower(answer) == "yes" {
-		ui.PrintStep("Levantando servicio con Docker...")
+	if ui.AskYesNo(ui.GetText("docker_up_confirm_start")) {
+		ui.PrintStep(ui.GetText("docker_up_starting"))
 
 		cmd := exec.CommandContext(ctx, "docker", "compose", "up", "-d")
 		cmd.Dir = dockerDir
@@ -330,11 +311,11 @@ func startService(ctx context.Context, t ComposeTemplate, reader *bufio.Reader) 
 			return fmt.Errorf("error ejecutando docker compose: %w", err)
 		}
 
-		ui.PrintSuccess("Servicio '%s' levantado!", t.Name)
-		ui.Gray.Println("\nComandos útiles:")
-		ui.Gray.Printf("  Ver logs:    cd %s && docker compose logs -f\n", dockerDir)
-		ui.Gray.Printf("  Detener:     cd %s && docker compose down\n", dockerDir)
-		ui.Gray.Printf("  Acceder:     http://localhost:%s\n", t.Port)
+		ui.PrintSuccess(ui.GetText("docker_up_success", t.Name))
+		ui.Gray.Println(ui.GetText("docker_up_cmds"))
+		ui.Gray.Println(ui.GetText("docker_up_logs", dockerDir))
+		ui.Gray.Println(ui.GetText("docker_up_stop", dockerDir))
+		ui.Gray.Println(ui.GetText("docker_up_access", t.Port))
 	}
 
 	return nil
@@ -347,7 +328,7 @@ func liftExistingService(ctx context.Context, dockerDir string, t ComposeTemplat
 		return nil
 	}
 
-	ui.PrintStep("Levantando servicio existente...")
+	ui.PrintStep(ui.GetText("docker_up_lift_existing"))
 
 	cmd := exec.CommandContext(ctx, "docker", "compose", "up", "-d")
 	cmd.Dir = dockerDir
@@ -359,11 +340,11 @@ func liftExistingService(ctx context.Context, dockerDir string, t ComposeTemplat
 		return fmt.Errorf("error ejecutando docker compose: %w", err)
 	}
 
-	ui.PrintSuccess("Servicio '%s' levantado!", t.Name)
-	ui.Gray.Println("\nComandos útiles:")
-	ui.Gray.Printf("  Ver logs:    cd %s && docker compose logs -f\n", dockerDir)
-	ui.Gray.Printf("  Detener:     cd %s && docker compose down\n", dockerDir)
-	ui.Gray.Printf("  Acceder:     http://localhost:%s\n", t.Port)
+	ui.PrintSuccess(ui.GetText("docker_up_success", t.Name))
+	ui.Gray.Println(ui.GetText("docker_up_cmds"))
+	ui.Gray.Println(ui.GetText("docker_up_logs", dockerDir))
+	ui.Gray.Println(ui.GetText("docker_up_stop", dockerDir))
+	ui.Gray.Println(ui.GetText("docker_up_access", t.Port))
 
 	return nil
 }

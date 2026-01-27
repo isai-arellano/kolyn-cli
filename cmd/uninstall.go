@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -9,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/isai-arellano/kolyn-cli/cmd/ui"
@@ -26,23 +24,14 @@ var uninstallCmd = &cobra.Command{
 }
 
 func runUninstall(ctx context.Context) error {
-	ui.ShowSection("🗑️  Kolyn Uninstall")
+	ui.ShowSection(ui.GetText("uninstall_title"))
 
-	ui.YellowText.Println("⚠️  ADVERTENCIA: Esto eliminará el ejecutable de Kolyn.")
-	ui.Gray.Println("El script de desinstalación te preguntará si también deseas borrar")
-	ui.Gray.Println("tus configuraciones y datos (skills, servicios Docker, etc).")
+	ui.YellowText.Println(ui.GetText("uninstall_warning"))
+	ui.Gray.Println(ui.GetText("uninstall_details"))
 	fmt.Println()
 
-	ui.WhiteText.Print("¿Estás seguro de que deseas continuar? [y/N]: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	answer, err := readInput(reader)
-	if err != nil {
-		return fmt.Errorf("error leyendo entrada: %w", err)
-	}
-
-	if strings.ToLower(answer) != "y" && strings.ToLower(answer) != "yes" && strings.ToLower(answer) != "s" && strings.ToLower(answer) != "si" {
-		ui.PrintInfo("Operación cancelada.")
+	if !ui.AskYesNo(ui.GetText("uninstall_confirm")) {
+		ui.PrintInfo(ui.GetText("uninstall_cancel"))
 		return nil
 	}
 
@@ -67,7 +56,7 @@ func runUninstall(ctx context.Context) error {
 		args = []string{}
 	}
 
-	ui.PrintStep("Descargando desinstalador...")
+	ui.PrintStep(ui.GetText("uninstall_downloading"))
 
 	// Download script
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, scriptURL, nil)
@@ -107,7 +96,7 @@ func runUninstall(ctx context.Context) error {
 		os.Chmod(tmpFile.Name(), 0755)
 	}
 
-	ui.PrintStep("Iniciando desinstalación...")
+	ui.PrintStep(ui.GetText("uninstall_starting"))
 
 	// Prepare command
 	finalArgs := append(args, tmpFile.Name())
@@ -123,8 +112,8 @@ func runUninstall(ctx context.Context) error {
 		return fmt.Errorf("error iniciando desinstalador: %w", err)
 	}
 
-	ui.PrintSuccess("Desinstalador iniciado.")
-	ui.Gray.Println("Kolyn se cerrará ahora para permitir su eliminación.")
+	ui.PrintSuccess(ui.GetText("uninstall_started"))
+	ui.Gray.Println(ui.GetText("uninstall_closing"))
 
 	// Release the file lock by exiting
 	os.Exit(0)
