@@ -34,6 +34,7 @@ No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice 
 • kolyn check               → Audita que el proyecto cumpla con las skills (Deps, Files)
 • kolyn status              → Ver servicios Docker corriendo
 • kolyn up                  → Levantar infraestructura (DBs, n8n, etc)
+• kolyn scaffold            → Generar/Auditar estructura de proyecto
 
 📌 SKILL MAP (Si vas a tocar X, lee Y):
 • 🎨 UI / Components      → Lee skills/web/ui/ (shadcn.md, stack.md)
@@ -46,6 +47,8 @@ No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice 
    ↳ Requisito: Next.js 16, Server Actions, 'use client' en hojas.
 • 🐹 Backend / Golang     → Lee skills/backend/go/core.md
    ↳ Requisito: Go 1.22+, errgroup, estructura cmd/internal.
+• 🚀 DevOps / CI/CD       → Lee skills/devops/ci-cd.md
+   ↳ Requisito: GitHub Actions, Dokploy, Neon Branching.
 
 ═══════════════════════════════════════════════════════════════════════
 `
