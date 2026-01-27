@@ -32,8 +32,8 @@ No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice 
 🛠 COMMANDS:
 • kolyn skills paths        → Muestra rutas de skills (Índice Maestro)
 • kolyn check               → Audita que el proyecto cumpla con las skills (Deps, Files)
-• kolyn tools docker list   → Ver servicios corriendo
-• kolyn tools docker up     → Levantar infraestructura (DBs, n8n, etc)
+• kolyn status              → Ver servicios Docker corriendo
+• kolyn up                  → Levantar infraestructura (DBs, n8n, etc)
 
 📌 SKILL MAP (Si vas a tocar X, lee Y):
 • 🎨 UI / Components      → Lee skills/web/ui/ (shadcn.md, stack.md)
@@ -44,7 +44,7 @@ No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice 
    ↳ Requisito: Drizzle ORM, Postgres 3NF, Zod Validation.
 • ⚡ Framework / Logic    → Lee skills/web/framework/ (nextjs.md)
    ↳ Requisito: Next.js 16, Server Actions, 'use client' en hojas.
-• 🐹 Backend / Golang     → Lee skills/golang/core.md
+• 🐹 Backend / Golang     → Lee skills/backend/go/core.md
    ↳ Requisito: Go 1.22+, errgroup, estructura cmd/internal.
 
 ═══════════════════════════════════════════════════════════════════════

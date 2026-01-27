@@ -10,18 +10,16 @@ import (
 
 var (
 	// Version will be set by goreleaser during build
-	Version = "v0.2.2"
+	Version = "v0.2.9"
 	Commit  = "none"
 	Date    = "unknown"
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "kolyn",
-	Short: "Herramienta CLI para ayudar a la IA con contexto y datos",
-	Long: `Kolyn es una herramienta CLI que:
-- Agrega contexto del proyecto para agentes IA
-- Proporciona acceso a skills y templates
-- Permite levantar servicios Docker rápidamente
+	Short: "Orquestador de desarrollo para equipos con IA",
+	Long: `Kolyn es una herramienta CLI diseñada para estandarizar flujos de trabajo
+y proveer contexto a agentes de IA.
 
 Usa 'kolyn <comando>' para interactuar.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -32,7 +30,7 @@ Usa 'kolyn <comando>' para interactuar.`,
 
 var toolsCmd = &cobra.Command{
 	Use:   "tools",
-	Short: "Herramientas de utilidad (Docker, etc)",
+	Short: "Herramientas de utilidad (Docker, SSH, etc)",
 	Long:  `Colección de herramientas útiles para el desarrollo.`,
 }
 
@@ -43,22 +41,32 @@ var dockerCmd = &cobra.Command{
 }
 
 func init() {
+	// Comandos Principales (Root)
 	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(syncCmd)
+	rootCmd.AddCommand(checkCmd)
+	rootCmd.AddCommand(configCmd)
+
+	// Comandos de Servicios (Promovidos a Root)
+	rootCmd.AddCommand(dockerUpCmd)   // kolyn up
+	rootCmd.AddCommand(dockerDownCmd) // kolyn down
+	rootCmd.AddCommand(statusCmd)     // kolyn status
+
+	// Comandos Utilitarios
 	rootCmd.AddCommand(skillsCmd)
 	rootCmd.AddCommand(toolsCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(updateCmd)
-	rootCmd.AddCommand(syncCmd)
-	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(uninstallCmd)
 
+	// Estructura Legacy/Organizada
 	toolsCmd.AddCommand(dockerCmd)
 	toolsCmd.AddCommand(sshCmd)
 	sshCmd.AddCommand(sshCreateCmd)
 
 	dockerCmd.AddCommand(dockerUpCmd)
 	dockerCmd.AddCommand(dockerDownCmd)
-	dockerCmd.AddCommand(dockerListCmd)
+	dockerCmd.AddCommand(statusCmd)
 
 	skillsCmd.AddCommand(skillsPathsCmd)
 	skillsCmd.AddCommand(skillsListCmd)
@@ -67,24 +75,16 @@ func init() {
 func showWelcome() {
 	ui.ShowBanner(Version)
 
-	ui.Cyan.Println("📋 Comandos disponibles:")
+	ui.Cyan.Println("📋 Comandos principales:")
 
 	commands := []struct {
 		name        string
 		description string
 	}{
-		{"kolyn init", "Inicializa kolyn y agrega contexto al Agent.md"},
-		{"kolyn sync", "Sincroniza skills remotos desde .kolyn.json"},
-		{"kolyn skills", "Retorna JSON con skills disponibles para la IA"},
-		{"kolyn skills list", "Lista skills y permite ver/editar contenido"},
-		{"kolyn skills paths", "Retorna solo las rutas de skills"},
-		{"kolyn check", "Audita el proyecto contra las reglas de las skills"},
-		{"kolyn update", "Actualiza kolyn a la última versión disponible"},
-		{"kolyn uninstall", "Desinstala kolyn y limpia configuraciones"},
-		{"kolyn tools ssh create", "Genera llaves SSH y configura acceso a servidores"},
-		{"kolyn tools docker up", "Levanta servicios Docker desde templates"},
-		{"kolyn tools docker list", "Lista servicios Docker y su estado"},
-		{"kolyn tools docker down", "Detiene servicios Docker levantados"},
+		{"kolyn init", "Inicializa proyecto con contexto para IA"},
+		{"kolyn sync", "Sincroniza skills del equipo"},
+		{"kolyn check", "Audita cumplimiento de estándares"},
+		{"kolyn config", "Configuración global (idioma, repo)"},
 	}
 
 	for _, cmd := range commands {
@@ -93,7 +93,24 @@ func showWelcome() {
 	}
 
 	fmt.Println()
-	ui.YellowText.Println("💡 Tip: 'kolyn tools docker up' para levantar servicios Docker")
+	ui.Cyan.Println("🐳 Servicios:")
+
+	services := []struct {
+		name        string
+		description string
+	}{
+		{"kolyn up", "Levanta servicios Docker"},
+		{"kolyn down", "Detiene servicios"},
+		{"kolyn status", "Ver estado de servicios"},
+	}
+
+	for _, cmd := range services {
+		ui.Blue.Printf("  🔹 %-25s", cmd.name)
+		ui.WhiteText.Printf(" - %s\n", cmd.description)
+	}
+
+	fmt.Println()
+	ui.YellowText.Println("💡 Tip: Usa 'kolyn <command> --help' para más detalles.")
 	fmt.Println()
 }
 

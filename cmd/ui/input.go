@@ -88,6 +88,10 @@ func GetText(key string, args ...interface{}) string {
 		"audit_summary":     "Resumen: %d verificaciones, %d pasadas, %d alertas",
 		"audit_issues":      "se encontraron %d problemas en la auditoría",
 
+		// Config
+		"skills_repo_prompt": "Ingresa la URL del repositorio de skills de tu equipo (o deja vacío para usar el default):",
+		"using_default_repo": "Usando repositorio oficial de Kolyn.",
+
 		// Uninstall
 		"uninstall_title":       "🗑️  Kolyn Uninstall",
 		"uninstall_warning":     "⚠️  ADVERTENCIA: Esto eliminará el ejecutable de Kolyn.",
@@ -145,6 +149,10 @@ func GetText(key string, args ...interface{}) string {
 		"found_file":        "  ✅ File found: %s",
 		"audit_summary":     "Summary: %d checks, %d passed, %d warnings",
 		"audit_issues":      "%d issues found during audit",
+
+		// Config
+		"skills_repo_prompt": "Enter your team's skills repository URL (or leave empty for default):",
+		"using_default_repo": "Using official Kolyn repository.",
 
 		// Uninstall
 		"uninstall_title":       "🗑️  Kolyn Uninstall",

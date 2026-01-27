@@ -23,13 +23,13 @@ var dockerDownCmd = &cobra.Command{
 	},
 }
 
-var dockerListCmd = &cobra.Command{
-	Use:     "list",
-	Short:   "Lista servicios Docker",
-	Long:    `Lista todos los servicios Docker configurados y su estado.`,
-	Aliases: []string{"docker-list", "ls"},
+var statusCmd = &cobra.Command{
+	Use:     "status",
+	Short:   "Muestra el estado de los servicios Docker",
+	Long:    `Lista todos los servicios Docker configurados y muestra si están corriendo o detenidos.`,
+	Aliases: []string{"list", "ls", "docker-list"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDockerListCommand(cmd.Context())
+		return runStatusCommand(cmd.Context())
 	},
 }
 
@@ -38,7 +38,7 @@ type ServiceInfo struct {
 	Path string
 }
 
-func runDockerListCommand(ctx context.Context) error {
+func runStatusCommand(ctx context.Context) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("error obteniendo home dir: %w", err)
@@ -54,7 +54,7 @@ func runDockerListCommand(ctx context.Context) error {
 
 	if len(services) == 0 {
 		ui.Gray.Println("  No hay servicios configurados en ~/.kolyn/services/")
-		ui.Gray.Println("  Ejecuta 'kolyn docker up' para crear uno.")
+		ui.Gray.Println("  Ejecuta 'kolyn up' para crear uno.")
 		return nil
 	}
 
@@ -165,9 +165,7 @@ func getExistingServices(basePath string) ([]ServiceInfo, error) {
 		if _, err := os.Stat(composePath); err == nil {
 			cleanName := entry.Name()
 			cleanName = strings.ReplaceAll(cleanName, "-", " ")
-			// Title casing is deprecated in newer Go but still standard library.
-			// golang.org/x/text/cases is better but external. Staying with strings.Title for now or custom.
-			// Actually strings.Title is deprecated since Go 1.18. Let's use simple logic.
+			// Simple Title Case logic
 			if len(cleanName) > 0 {
 				cleanName = strings.ToUpper(cleanName[:1]) + cleanName[1:]
 			}
