@@ -2,163 +2,140 @@
 
 **Orquestador de Desarrollo para la Era de la IA**
 
-Kolyn es una herramienta CLI diseñada para estandarizar flujos de trabajo en equipos modernos. Actúa como un puente entre desarrolladores y Agentes de IA, inyectando contexto (Skills, Reglas, Roles) y automatizando tareas repetitivas de infraestructura.
+Kolyn es una herramienta CLI diseñada para estandarizar flujos de trabajo en equipos modernos. Actúa como un puente entre desarrolladores y Agentes de IA (Windsurf, Cursor, Cline), inyectando contexto técnico (Skills, Reglas, Arquitectura) y automatizando tareas repetitivas.
+
+---
+
+## 🧠 Arquitectura: Cerebro y Músculo
+
+Kolyn separa la lógica de la herramienta del conocimiento técnico.
+
+1.  **El Músculo (Kolyn CLI):** Binario que instalas en tu máquina. Sabe cómo auditar código, levantar Docker y generar archivos.
+2.  **El Conocimiento (Skills Repo):** Un repositorio Git (privado o público) donde tu equipo define *cómo* se hacen las cosas (Reglas de Linting, Stack Tecnológico, Convenciones).
+3.  **El Cerebro del Proyecto (Agent.md):** Un archivo generado en la raíz de cada proyecto que le dice a la IA exactamente qué herramientas y reglas aplican para *ese* proyecto específico.
+
+---
 
 ## 📦 Instalación
 
-### Instalación Rápida
-
-**Mac / Linux:**
+### Mac / Linux
 ```bash
 curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.sh | sh
 ```
 
-**Windows (PowerShell):**
+### Windows (PowerShell)
 ```powershell
 irm https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.ps1 | iex
 ```
 
-### Desde Source (Go)
-Si tienes Go instalado:
-```bash
-go install github.com/isai-arellano/kolyn-cli@latest
-```
-
-### ⚙️ Configuración Global (Zero Config)
-Kolyn usa una configuración centralizada para que no tengas que repetir tus preferencias en cada proyecto.
+### ⚙️ Configuración Inicial (Zero Config)
+La primera vez que uses Kolyn, ejecuta esto para conectarlo con el "cerebro" de tu equipo (repositorio de skills):
 
 ```bash
-# Inicia el asistente de configuración
 kolyn config init
 ```
-
-Esto te permitirá definir:
-1. **Idioma Preferido:** Español (México) o Inglés.
-2. **Repositorio de Skills:** Define una fuente única de verdad para tu equipo (ej. `tu-org/skills`).
-3. **Preferencias:** Almacenadas en `~/.kolyn/config.json`.
+*Te pedirá idioma y la URL del repo de skills (ej. `git@github.com:tu-org/skills.git`).*
 
 ---
 
 ## 🚀 Flujo de Trabajo (Workflow)
 
-### 1. Inicializar Proyecto
-Al iniciar un proyecto, Kolyn crea o actualiza el archivo `Agent.md`. Este archivo es el "cerebro" que tu Agente de IA leerá para entender cómo trabajar contigo.
+### 1. Crear Nuevo Proyecto (Scaffold)
+Crea proyectos desde cero siguiendo las mejores prácticas de tu equipo.
 
 ```bash
-cd mi-proyecto
+kolyn scaffold
+```
+1. Seleccionas el tipo de proyecto (ej. Next.js).
+2. Kolyn genera la estructura de carpetas y archivos base.
+3. **Automáticamente** inicia la configuración de contexto (`Agent.md`).
+
+### 2. Inicializar Proyecto Existente
+Si ya tienes código, genera el contexto para tu IA:
+
+```bash
 kolyn init
 ```
+Kolyn detectará tu stack (Next.js, Go, Python) y te hará preguntas clave:
+*   *¿Usas base de datos?*
+*   *¿Tienes autenticación?*
+*   *¿Consumes APIs externas?*
 
-### 2. Sincronizar Skills (Sync)
-Kolyn inyecta conocimiento técnico estandarizado a tu IA.
+El resultado es un archivo `Agent.md` optimizado que tu IA leerá para entender el proyecto.
 
-```bash
-kolyn sync
-```
-*   Si configuraste un repo global, descargará las skills desde ahí.
-*   Si el proyecto tiene un `.kolyn.json` específico, usará esa configuración.
-*   Soporta **repositorios privados** (vía SSH/HTTPS).
-
-### 3. Auditar Proyecto (Check)
-Verifica que tu proyecto cumpla con los estándares definidos en tus skills.
+### 3. Auditar (Check)
+Verifica que tu código cumpla con las reglas definidas en tus skills.
 
 ```bash
 kolyn check
 ```
-Esta herramienta lee los archivos markdown de tus skills y busca reglas definidas en el frontmatter (archivos requeridos, dependencias prohibidas, etc).
+Kolyn lee el `Agent.md`, ve qué "Capabilities" (capacidades) activaste (ej. Database, Auth) y audita solo lo necesario.
+*   ✅ Verifica dependencias requeridas (ej. `drizzle-orm`).
+*   ✅ Verifica archivos de configuración (ej. `drizzle.config.ts`).
+*   ❌ Alerta sobre dependencias prohibidas.
+
+---
+
+## 🧩 Conceptos Clave
+
+### Capabilities (Capacidades)
+En lugar de validar todo contra todo, Kolyn usa "Capabilities" para entender qué hace tu proyecto:
+
+| Capability | Descripción | Skills que activa |
+|------------|-------------|-------------------|
+| `core` | Estructura base del framework | Linting, Config básica |
+| `ui` | Componentes visuales | Shadcn/UI, Tailwind, Iconos |
+| `database` | Persistencia de datos | ORMs (Drizzle, Prisma), Drivers |
+| `auth` | Usuarios y Sesiones | Better Auth, NextAuth |
+| `api` | Consumo de servicios | Axios, React Query, Zod |
+| `devops` | CI/CD y Deploy | GitHub Actions, Dockerfiles |
+
+### Skills
+Archivos Markdown que viven en tu repositorio y definen las reglas. Ejemplo de frontmatter:
+
+```yaml
+---
+name: Drizzle ORM
+applies_to: [nextjs, node]
+capability: database
+check:
+  required_deps: [drizzle-orm]
+  files_exist_any: [drizzle.config.ts]
+---
+# Drizzle ORM Guidelines...
+```
 
 ---
 
 ## 🛠 Herramientas (Tools)
 
-Kolyn incluye un set de navajas suizas para tareas comunes.
-
-### 🐳 Docker Tools
-Levanta infraestructura de desarrollo en segundos usando templates pre-configurados.
+### 🐳 Docker Manager
+Levanta servicios de infraestructura (BDs, Cache) en segundos.
 
 ```bash
-# Levantar un servicio (menú interactivo)
-kolyn up
-# O usar el alias:
-kolyn docker up
-
-# Listar servicios corriendo
-kolyn tools docker list
-
-# Detener un servicio
-kolyn tools docker down
+kolyn up           # Menú interactivo para levantar servicios
+kolyn status       # Ver qué está corriendo
+kolyn down         # Apagar todo
 ```
-
-**Personalización:**
-Kolyn busca templates `.yml` en `~/.kolyn/templates/`.
-Puedes agregar tus propios archivos ahí y aparecerán automáticamente en el menú.
-
-*Templates incluidos por defecto:* n8n, PostgreSQL, Redis, MongoDB.
-*Ubicación de datos:* Los volúmenes y archivos persisten en `~/.kolyn/services/`.
+*Templates incluidos:* PostgreSQL, Redis, MongoDB, n8n, Supabase.
 
 ### 🔑 SSH Manager
-Genera llaves SSH modernas (Ed25519) y configura tu archivo `~/.ssh/config` automáticamente con una sola línea.
+Genera llaves SSH modernas y configura tu `~/.ssh/config` automáticamente.
 
 ```bash
-# Sintaxis: kolyn tools ssh create <nombre> <ip> [usuario]
 kolyn tools ssh create mi-servidor 192.168.1.50 root
 ```
-Esto:
-1. Genera llaves en `~/.ssh/mi-servidor`
-2. Agrega la configuración al `config` de SSH.
-3. (Opcional) Copia la llave pública al servidor remoto.
 
 ---
-
-## 🧠 Comandos de IA (Skills)
-
-Comandos pensados para que los use tu Agente de IA (Windsurf, Cursor, Cline, etc):
-
-*   `kolyn skills paths`: Muestra rutas absolutas a los archivos de contexto (Roles, Reglas, Tech).
-*   `kolyn skills list`: Explorador interactivo de skills para humanos.
-
-### Estructura Recomendada de Skills
-Kolyn sugiere organizar tu repositorio de skills de la siguiente manera:
-
-```text
-skills/
-├── backend/
-│   ├── go/
-│   └── python/
-├── web/
-│   ├── framework/ (nextjs, react)
-│   ├── ui/        (shadcn, tailwind)
-│   └── data/      (drizzle, prisma)
-├── mobile/
-└── devops/
-```
-
----
-
-## 🗑 Desinstalación
-
-Si decides irte, Kolyn limpia su desorden.
-
-```bash
-kolyn uninstall
-```
-O manualmente:
-```bash
-# Mac / Linux
-curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.sh | sh
-```
 
 ## 📂 Estructura de Archivos
 
-Kolyn mantiene tu sistema ordenado guardando todo en `~/.kolyn`:
-
 ```text
 ~/.kolyn/
-├── config.json     # Configuración global (Idioma, Repo Default)
-├── services/       # Contenedores Docker y sus volúmenes
-├── templates/      # Templates .yml para docker up (Editable)
-├── skills/         # Skills locales descargadas
-└── sources/        # Repositorios clonados (Cache)
+├── config.json     # Configuración global
+├── sources/        # Repositorios de skills clonados (Cache)
+├── services/       # Volúmenes de Docker persistentes
+└── templates/      # Tus archivos docker-compose.yml personalizados
 ```
 
 ## License
