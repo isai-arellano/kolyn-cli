@@ -40,16 +40,16 @@ func runConfigInit(ctx context.Context) error {
 	ui.CurrentLanguage = lang
 
 	// 2. Repo de Skills
-	ui.PrintQuestion(ui.GetText("skills_repo_prompt", "Ingresa la URL del repositorio de skills de tu equipo (o deja vacío para usar el default):"))
+	ui.PrintQuestion(ui.GetText("skills_repo_prompt", "Ingresa la URL del repositorio de skills de tu equipo (ej. git@github.com:org/skills.git):"))
 	repoURL := ui.ReadInput("> ")
 
 	var sources []string
 	if repoURL != "" {
 		sources = []string{repoURL}
 	} else {
-		// Default to Kolyn's official repo or empty
-		sources = []string{"https://github.com/isai-arellano/kolyn-cli.git"}
-		ui.PrintInfo(ui.GetText("using_default_repo"))
+		// No default repo provided
+		sources = []string{}
+		ui.PrintInfo("No se configuró repositorio de skills. Usa 'kolyn config' para agregarlo después.")
 	}
 
 	// 3. Guardar

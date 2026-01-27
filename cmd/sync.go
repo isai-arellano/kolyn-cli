@@ -65,9 +65,7 @@ func runSyncCommand(ctx context.Context) error {
 			ui.CurrentLanguage = lang
 
 			// Default sources
-			defaultSources := []string{
-				"https://github.com/isai-arellano/kolyn-cli.git", // Self-reference for skills
-			}
+			defaultSources := []string{}
 
 			// Guardar config global
 			newGlobal := &config.GlobalConfig{
