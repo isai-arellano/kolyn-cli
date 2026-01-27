@@ -31,6 +31,7 @@ No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice 
 
 🛠 COMMANDS:
 • kolyn skills paths        → Muestra rutas de skills (Índice Maestro)
+• kolyn check               → Audita que el proyecto cumpla con las skills (Deps, Files)
 • kolyn tools docker list   → Ver servicios corriendo
 • kolyn tools docker up     → Levantar infraestructura (DBs, n8n, etc)
 

@@ -1,3 +1,12 @@
+---
+check:
+  required_deps: 
+    - better-auth
+  forbidden_deps: 
+    - next-auth
+    - @auth/core
+---
+
 # Better Auth Pro (Autenticación Moderna)
 
 **Referencia Oficial:** [better-auth.com](https://better-auth.com/docs)

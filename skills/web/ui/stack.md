@@ -1,3 +1,16 @@
+---
+check:
+  required_deps: 
+    - react-icons
+    - framer-motion
+    - sonner
+    - tailwind-merge
+    - class-variance-authority
+  forbidden_deps: 
+    - lucide-react
+    - react-hot-toast
+---
+
 # UI Tech Stack (Librerías Estándar)
 
 Este documento define las librerías obligatorias para la capa de UI. La consistencia es clave: no mezcles librerías de iconos ni de animaciones.

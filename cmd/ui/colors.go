@@ -54,6 +54,11 @@ func PrintError(msg string, args ...interface{}) {
 	Error.Printf("❌ "+msg+"\n", args...)
 }
 
+// PrintFail imprime un mensaje de fallo en una verificación (alias de PrintError para semántica)
+func PrintFail(msg string, args ...interface{}) {
+	Red.Printf(msg+"\n", args...)
+}
+
 // PrintWarning imprime una advertencia
 func PrintWarning(msg string, args ...interface{}) {
 	Warning.Printf("⚠️  "+msg+"\n", args...)

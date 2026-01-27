@@ -1,3 +1,12 @@
+---
+check:
+  required_deps: 
+    - drizzle-orm
+    - drizzle-kit
+  files_exist:
+    - drizzle.config.ts
+---
+
 # Drizzle ORM Pro (PostgreSQL Edition)
 
 **Referencia:** Drizzle ORM es nuestra capa de acceso a datos preferida por ser "Type-Safe" y ligera. Siempre se usa en conjunto con **PostgreSQL**.
