@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"runtime"
 	"time"
 
@@ -100,23 +99,14 @@ func runUninstall(ctx context.Context) error {
 
 	// Prepare command
 	finalArgs := append(args, tmpFile.Name())
-	cmd := exec.Command(shell, finalArgs...)
-
-	// Connect streams so user can interact
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Start detached
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("error iniciando desinstalador: %w", err)
-	}
 
 	ui.PrintSuccess(ui.GetText("uninstall_started"))
 	ui.Gray.Println(ui.GetText("uninstall_closing"))
 
-	// Release the file lock by exiting
-	os.Exit(0)
+	// Replace process to preserve TTY for sudo
+	if err := replaceProcess(shell, finalArgs); err != nil {
+		return fmt.Errorf("error reemplazando proceso: %w", err)
+	}
 
 	return nil
 }
