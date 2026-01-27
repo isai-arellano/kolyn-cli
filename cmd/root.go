@@ -10,7 +10,7 @@ import (
 
 var (
 	// Version will be set by goreleaser during build
-	Version = "v0.2.9"
+	Version = "v0.2.10"
 	Commit  = "none"
 	Date    = "unknown"
 )
@@ -45,6 +45,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(checkCmd)
+	rootCmd.AddCommand(scaffoldCmd)
 	rootCmd.AddCommand(configCmd)
 
 	// Comandos de Servicios (Promovidos a Root)
@@ -75,7 +76,7 @@ func init() {
 func showWelcome() {
 	ui.ShowBanner(Version)
 
-	ui.Cyan.Println("📋 Comandos principales:")
+	ui.Cyan.Println("📋 Proyecto:")
 
 	commands := []struct {
 		name        string
@@ -84,6 +85,7 @@ func showWelcome() {
 		{"kolyn init", "Inicializa proyecto con contexto para IA"},
 		{"kolyn sync", "Sincroniza skills del equipo"},
 		{"kolyn check", "Audita cumplimiento de estándares"},
+		{"kolyn scaffold", "Genera estructura base de proyectos"},
 		{"kolyn config", "Configuración global (idioma, repo)"},
 	}
 
