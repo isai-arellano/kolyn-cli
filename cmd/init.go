@@ -34,11 +34,15 @@ No leas todas las skills de golpe. Usa 'kolyn skills paths' para ver el índice 
 • kolyn tools docker list   → Ver servicios corriendo
 • kolyn tools docker up     → Levantar infraestructura (DBs, n8n, etc)
 
-📌 SKILL MAP:
-• /skills/roles/     → Personas (Architect, Planner, QA)
-• /skills/rules/     → Reglas estrictas (Security, Naming)
-• /skills/tech/      → Guías técnicas (React, Go, Docker)
-• /skills/workflows/ → Procesos (Git Flow, Releases)
+📌 SKILL MAP (Si vas a tocar X, lee Y):
+• 🎨 UI / Components      → Lee skills/web/ui/ (shadcn.md, stack.md)
+   ↳ Requisito: Framer Motion, React Icons, Sonner, Tailwind+CVA.
+• 🔐 Auth / Sessions      → Lee skills/web/auth/ (better-auth.md)
+   ↳ Requisito: Better Auth, Plugins, Secure Cookies.
+• 💾 Data / DB / Schema   → Lee skills/web/data/ (drizzle.md, postgres.md, zod.md)
+   ↳ Requisito: Drizzle ORM, Postgres 3NF, Zod Validation.
+• ⚡ Framework / Logic    → Lee skills/web/framework/ (nextjs.md)
+   ↳ Requisito: Next.js 16, Server Actions, 'use client' en hojas.
 
 ═══════════════════════════════════════════════════════════════════════
 `
