@@ -10,7 +10,7 @@ import (
 
 var (
 	// Version will be set by goreleaser during build
-	Version = "v0.2.15"
+	Version = "v0.2.16"
 	Commit  = "none"
 	Date    = "unknown"
 )

@@ -58,30 +58,39 @@ func RunInitProject(ctx context.Context, root string, interactive bool) error {
 		}
 	}
 
-	// 3. Preguntas Interactivas o Defaults
+	// 3. Verificar si existen skills (si no, advertir)
+	skillsDir, err := getFirstSkillsSourceDir()
+	if err != nil || skillsDir == "" {
+		ui.YellowText.Println("\n⚠️  No se detectaron skills sincronizadas.")
+		ui.Gray.Println("   El Agent.md generado será básico y no tendrá referencias a skills.")
+		ui.Gray.Println("   Recomendación: Ejecuta 'kolyn sync' después de esto.")
+		if interactive && !ui.AskYesNo("¿Deseas continuar de todos modos?") {
+			return nil
+		}
+	}
+
+	// 4. Preguntas Interactivas o Defaults
 	ui.PrintStep("Configurando features del proyecto:")
 
 	features := ProjectFeatures{Type: pType}
 
 	if interactive {
-		features.UI = ui.AskYesNo("❓ ¿Tu proyecto usa componentes de UI? (shadcn, MUI, etc.)")
+		features.UI = ui.AskYesNo("❓ ¿Tu proyecto usa componentes de UI?")
 		features.Database = ui.AskYesNo("❓ ¿Tu proyecto tiene base de datos?")
 		features.Auth = ui.AskYesNo("❓ ¿Tu proyecto tiene autenticación de usuarios?")
 		features.API = ui.AskYesNo("❓ ¿Tu proyecto consume APIs externas?")
 		features.DevOps = ui.AskYesNo("❓ ¿Tienes configurado CI/CD?")
 	} else {
 		// Defaults para modo no interactivo (ej. Scaffold)
-		// Si es Next.js scaffold, asumimos UI (Shadcn) y API (Zod) por default
 		if pType == "nextjs" {
 			features.UI = true
 			features.API = true
-			// DB y Auth se dejan en false a menos que el scaffold diga lo contrario
 		}
 		ui.PrintInfo("Usando configuración por defecto para scaffold.")
 	}
 
-	// 4. Generar Agent.md
-	if err := GenerateAgentMD(root, features); err != nil {
+	// 5. Generar Agent.md
+	if err := GenerateAgentMD(root, features, skillsDir); err != nil {
 		return err
 	}
 
@@ -93,29 +102,21 @@ func RunInitProject(ctx context.Context, root string, interactive bool) error {
 }
 
 func detectProjectType(root string) string {
-	// 1. Next.js
 	if exists(filepath.Join(root, "next.config.ts")) ||
 		exists(filepath.Join(root, "next.config.js")) ||
 		exists(filepath.Join(root, "next.config.mjs")) {
 		return "nextjs"
 	}
-
-	// 2. Go
 	if exists(filepath.Join(root, "go.mod")) {
 		return "go"
 	}
-
-	// 3. Python
 	if exists(filepath.Join(root, "requirements.txt")) ||
 		exists(filepath.Join(root, "pyproject.toml")) {
 		return "python"
 	}
-
-	// 4. Node Generic
 	if exists(filepath.Join(root, "package.json")) {
 		return "node"
 	}
-
 	return "generic"
 }
 
@@ -124,8 +125,8 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// GenerateAgentMD generates the Agent.md file (exported for Scaffold use)
-func GenerateAgentMD(root string, f ProjectFeatures) error {
+// GenerateAgentMD generates the Agent.md file
+func GenerateAgentMD(root string, f ProjectFeatures, skillsDirName string) error {
 	projectName := filepath.Base(root)
 
 	// Construir lista de features activas
@@ -146,37 +147,11 @@ func GenerateAgentMD(root string, f ProjectFeatures) error {
 		activeFeatures = append(activeFeatures, "devops")
 	}
 
-	// Construir lista de referencias sugeridas
-	var refs []string
+	// Contenido base del archivo
+	var content strings.Builder
 
-	// Base references based on type
-	if f.Type == "nextjs" {
-		refs = append(refs, "- [Next.js Framework](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/framework/nextjs.md)")
-	}
-	if f.Type == "go" {
-		refs = append(refs, "- [Golang Core](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/backend/go/core.md)")
-	}
-
-	// Feature references
-	if f.UI {
-		refs = append(refs, "- [Shadcn UI](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/ui/shadcn.md)")
-		refs = append(refs, "- [UI Stack](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/ui/stack.md)")
-	}
-	if f.Database {
-		refs = append(refs, "- [Drizzle ORM](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/data/drizzle.md)")
-		refs = append(refs, "- [PostgreSQL](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/data/postgres.md)")
-	}
-	if f.Auth {
-		refs = append(refs, "- [Better Auth](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/auth/better-auth.md)")
-	}
-	if f.API || f.Type == "nextjs" { // Zod is almost always useful in web
-		refs = append(refs, "- [Zod Validation](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/web/data/zod.md)")
-	}
-	if f.DevOps {
-		refs = append(refs, "- [CI/CD](~/.kolyn/sources/github.com-isai-arellano-kolyn-skills/devops/ci-cd.md)")
-	}
-
-	content := fmt.Sprintf(`# Agent Context - %s
+	// Header
+	fmt.Fprintf(&content, `# Agent Context - %s
 
 Kolyn Version: %s
 Generated: %s
@@ -192,17 +167,7 @@ Project Type: %s
 ### Stack & Architecture
 This project uses the following stack conventions:
 - **Type:** %s
-%s
-
-### Skills Reference
-The following skills are active for this project. Use 'kolyn skills paths' to find more.
-
-%s
-
-### Rules
-1. **Follow the Skills:** Read the reference files above before writing code.
-2. **Directory Structure:** Respect the existing project structure.
-3. **Consistency:** Use the same libraries and patterns defined in the stack.
+- **Capabilities:** %s
 `,
 		projectName,
 		Version,
@@ -210,11 +175,66 @@ The following skills are active for this project. Use 'kolyn skills paths' to fi
 		f.Type,
 		formatList(activeFeatures),
 		strings.ToUpper(f.Type),
-		getStackSummary(f),
-		strings.Join(refs, "\n"),
+		formatInlineList(activeFeatures),
 	)
 
-	return os.WriteFile(filepath.Join(root, "Agent.md"), []byte(content), 0644)
+	// Solo agregar sección de Skills si tenemos skills sincronizadas
+	if skillsDirName != "" {
+		basePath := fmt.Sprintf("~/.kolyn/sources/%s", skillsDirName)
+		var refs []string
+
+		// Base references based on type
+		if f.Type == "nextjs" {
+			refs = append(refs, fmt.Sprintf("- [Next.js Framework](%s/web/framework/nextjs.md)", basePath))
+		}
+		if f.Type == "go" {
+			refs = append(refs, fmt.Sprintf("- [Golang Core](%s/backend/go/core.md)", basePath))
+		}
+
+		// Feature references
+		if f.UI {
+			refs = append(refs, fmt.Sprintf("- [UI Components](%s/web/ui/shadcn.md)", basePath))
+			refs = append(refs, fmt.Sprintf("- [UI Stack](%s/web/ui/stack.md)", basePath))
+		}
+		if f.Database {
+			refs = append(refs, fmt.Sprintf("- [Database/ORM](%s/web/data/drizzle.md)", basePath))
+			refs = append(refs, fmt.Sprintf("- [Database Design](%s/web/data/postgres.md)", basePath))
+		}
+		if f.Auth {
+			refs = append(refs, fmt.Sprintf("- [Authentication](%s/web/auth/better-auth.md)", basePath))
+		}
+		if f.API || f.Type == "nextjs" {
+			refs = append(refs, fmt.Sprintf("- [Data Validation](%s/web/data/zod.md)", basePath))
+		}
+		if f.DevOps {
+			refs = append(refs, fmt.Sprintf("- [CI/CD](%s/devops/ci-cd.md)", basePath))
+		}
+
+		if len(refs) > 0 {
+			fmt.Fprintf(&content, `
+### Skills Reference
+The following skills are active for this project. Use 'kolyn skills paths' to find more.
+
+%s
+`, strings.Join(refs, "\n"))
+		}
+	} else {
+		// Mensaje alternativo si no hay skills
+		fmt.Fprintf(&content, `
+### Skills Reference
+⚠️ No skills detected. Run 'kolyn sync' to download your team's skills and then regenerate this file with 'kolyn init'.
+`)
+	}
+
+	// Footer con reglas generales
+	fmt.Fprintf(&content, `
+### Rules
+1. **Follow the Skills:** Read the reference files above before writing code.
+2. **Directory Structure:** Respect the existing project structure.
+3. **Consistency:** Use the same libraries and patterns defined in the stack.
+`)
+
+	return os.WriteFile(filepath.Join(root, "Agent.md"), []byte(content.String()), 0644)
 }
 
 func formatList(items []string) string {
@@ -228,16 +248,30 @@ func formatList(items []string) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func getStackSummary(f ProjectFeatures) string {
-	var summary strings.Builder
-	if f.UI {
-		summary.WriteString("- **UI:** Shadcn/UI + Tailwind\n")
+func formatInlineList(items []string) string {
+	if len(items) == 0 {
+		return "Core only"
 	}
-	if f.Database {
-		summary.WriteString("- **Database:** Drizzle ORM + PostgreSQL\n")
+	return strings.Join(items, ", ")
+}
+
+// getFirstSkillsSourceDir intenta encontrar el primer directorio de skills disponible
+func getFirstSkillsSourceDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
 	}
-	if f.Auth {
-		summary.WriteString("- **Auth:** Better Auth\n")
+	sourcesDir := filepath.Join(home, ".kolyn", "sources")
+
+	entries, err := os.ReadDir(sourcesDir)
+	if err != nil {
+		return "", err // Probablemente no existe
 	}
-	return strings.TrimRight(summary.String(), "\n")
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			return entry.Name(), nil
+		}
+	}
+	return "", nil
 }
