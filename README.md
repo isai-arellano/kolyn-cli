@@ -15,7 +15,7 @@ curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.ps1 | iex
 ```
 
 ### Desde Source (Go)
@@ -24,7 +24,22 @@ Si tienes Go instalado:
 go install github.com/isai-arellano/kolyn-cli@latest
 ```
 
-## 🚀 Getting Started
+### ⚙️ Configuración Global (Zero Config)
+Kolyn usa una configuración centralizada para que no tengas que repetir tus preferencias en cada proyecto.
+
+```bash
+# Inicia el asistente de configuración
+kolyn config init
+```
+
+Esto te permitirá definir:
+1. **Idioma Preferido:** Español (México) o Inglés.
+2. **Repositorio de Skills:** Define una fuente única de verdad para tu equipo (ej. `tu-org/skills`).
+3. **Preferencias:** Almacenadas en `~/.kolyn/config.json`.
+
+---
+
+## 🚀 Flujo de Trabajo (Workflow)
 
 ### 1. Inicializar Proyecto
 Al iniciar un proyecto, Kolyn crea o actualiza el archivo `Agent.md`. Este archivo es el "cerebro" que tu Agente de IA leerá para entender cómo trabajar contigo.
@@ -34,23 +49,25 @@ cd mi-proyecto
 kolyn init
 ```
 
-### 2. Sincronizar Estándares del Equipo (Sync)
-Kolyn permite que todo tu equipo comparta las mismas "Skills" (guías de estilo, arquitecturas, roles). Crea un archivo `.kolyn.json` en la raíz de tu proyecto:
+### 2. Sincronizar Skills (Sync)
+Kolyn inyecta conocimiento técnico estandarizado a tu IA.
 
-```json
-{
-  "project_name": "ecommerce-platform",
-  "skills_sources": [
-    "https://github.com/mi-org/backend-standards"
-  ]
-}
-```
-
-Luego ejecuta:
 ```bash
 kolyn sync
 ```
-Esto descargará automáticamente las skills de tu equipo en `~/.kolyn/sources/` y las hará disponibles para la IA.
+*   Si configuraste un repo global, descargará las skills desde ahí.
+*   Si el proyecto tiene un `.kolyn.json` específico, usará esa configuración.
+*   Soporta **repositorios privados** (vía SSH/HTTPS).
+
+### 3. Auditar Proyecto (Check)
+Verifica que tu proyecto cumpla con los estándares definidos en tus skills.
+
+```bash
+kolyn check
+```
+Esta herramienta lee los archivos markdown de tus skills y busca reglas definidas en el frontmatter (archivos requeridos, dependencias prohibidas, etc).
+
+---
 
 ## 🛠 Herramientas (Tools)
 
@@ -61,7 +78,9 @@ Levanta infraestructura de desarrollo en segundos usando templates pre-configura
 
 ```bash
 # Levantar un servicio (menú interactivo)
-kolyn tools docker up
+kolyn up
+# O usar el alias:
+kolyn docker up
 
 # Listar servicios corriendo
 kolyn tools docker list
@@ -71,7 +90,7 @@ kolyn tools docker down
 ```
 
 **Personalización:**
-Kolyn busca templates `.yml` en `~/.kolyn/templates/`. 
+Kolyn busca templates `.yml` en `~/.kolyn/templates/`.
 Puedes agregar tus propios archivos ahí y aparecerán automáticamente en el menú.
 
 *Templates incluidos por defecto:* n8n, PostgreSQL, Redis, MongoDB.
@@ -89,25 +108,44 @@ Esto:
 2. Agrega la configuración al `config` de SSH.
 3. (Opcional) Copia la llave pública al servidor remoto.
 
+---
+
 ## 🧠 Comandos de IA (Skills)
 
 Comandos pensados para que los use tu Agente de IA (Windsurf, Cursor, Cline, etc):
 
-*   `kolyn skills paths`: Muestra dónde están los archivos Markdown de contexto (Roles, Reglas, Tech).
+*   `kolyn skills paths`: Muestra rutas absolutas a los archivos de contexto (Roles, Reglas, Tech).
 *   `kolyn skills list`: Explorador interactivo de skills para humanos.
+
+### Estructura Recomendada de Skills
+Kolyn sugiere organizar tu repositorio de skills de la siguiente manera:
+
+```text
+skills/
+├── backend/
+│   ├── go/
+│   └── python/
+├── web/
+│   ├── framework/ (nextjs, react)
+│   ├── ui/        (shadcn, tailwind)
+│   └── data/      (drizzle, prisma)
+├── mobile/
+└── devops/
+```
+
+---
 
 ## 🗑 Desinstalación
 
-Si decides irte, Kolyn limpia su desorden. El script te preguntará si quieres conservar tus Skills descargadas.
+Si decides irte, Kolyn limpia su desorden.
 
-**Mac / Linux:**
 ```bash
-curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.sh | sh
+kolyn uninstall
 ```
-
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.ps1 | iex
+O manualmente:
+```bash
+# Mac / Linux
+curl -sfL https://raw.githubusercontent.com/isai-arellano/kolyn-cli/main/uninstall.sh | sh
 ```
 
 ## 📂 Estructura de Archivos
@@ -116,10 +154,11 @@ Kolyn mantiene tu sistema ordenado guardando todo en `~/.kolyn`:
 
 ```text
 ~/.kolyn/
+├── config.json     # Configuración global (Idioma, Repo Default)
 ├── services/       # Contenedores Docker y sus volúmenes
 ├── templates/      # Templates .yml para docker up (Editable)
-├── skills/         # Skills locales
-└── sources/        # Skills sincronizadas desde Git (Sync)
+├── skills/         # Skills locales descargadas
+└── sources/        # Repositorios clonados (Cache)
 ```
 
 ## License
