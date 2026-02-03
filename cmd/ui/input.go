@@ -207,3 +207,47 @@ func GetText(key string, args ...interface{}) string {
 	}
 	return msg
 }
+
+// SelectIndices prompts the user to select multiple options from a list.
+// Returns a slice of selected indices (0-based).
+// Input format: "1, 3, 5" or "1 3 5" or "1-3" (ranges not strictly required but nice, let's stick to comma/space first).
+func SelectIndices(prompt string, maxOptions int) ([]int, error) {
+	fmt.Print(prompt)
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	if input == "" {
+		return []int{}, nil
+	}
+
+	// Normalize separators: replace commas with spaces
+	input = strings.ReplaceAll(input, ",", " ")
+	parts := strings.Fields(input)
+
+	var selection []int
+	seen := make(map[int]bool)
+
+	for _, part := range parts {
+		var idx int
+		_, err := fmt.Sscan(part, &idx)
+		if err != nil {
+			Gray.Printf("   ⚠️  Ignorando entrada inválida: '%s'\n", part)
+			continue
+		}
+
+		if idx < 1 || idx > maxOptions {
+			Gray.Printf("   ⚠️  Ignorando número fuera de rango: %d (max: %d)\n", idx, maxOptions)
+			continue
+		}
+
+		// Convert to 0-based index
+		zeroIdx := idx - 1
+		if !seen[zeroIdx] {
+			selection = append(selection, zeroIdx)
+			seen[zeroIdx] = true
+		}
+	}
+
+	return selection, nil
+}

@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,7 +18,7 @@ import (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Inicializa kolyn y genera Agent.md",
-	Long:  `Analiza el proyecto y genera un archivo Agent.md personalizado con las skills y reglas necesarias para la IA.`,
+	Long:  `Analiza el proyecto y genera un archivo Agent.md personalizado con las skills seleccionadas.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -25,80 +28,163 @@ var initCmd = &cobra.Command{
 	},
 }
 
-type ProjectFeatures struct {
-	Type     string
-	UI       bool
-	Database bool
-	Auth     bool
-	API      bool
-	DevOps   bool
-}
-
 // RunInitProject initializes a project at the given root directory.
-// interactive: if true, asks the user for confirmation and features.
 func RunInitProject(ctx context.Context, root string, interactive bool) error {
 	ui.ShowSection("🚀 Inicializando Kolyn")
 
-	// 1. Detección automática
+	// 1. Detección automática (solo metadata)
 	ui.PrintStep("Detectando tipo de proyecto...")
 	pType := detectProjectType(root)
-	ui.Cyan.Printf("   🔍 Tipo detectado: %s\n\n", strings.ToUpper(pType))
+	ui.Cyan.Printf("   🔍 Tipo base: %s\n\n", strings.ToUpper(pType))
 
 	agentPath := filepath.Join(root, "Agent.md")
+	var existingSkills map[string]bool
+	var err error
 
-	// 2. Advertencia si existe (solo en interactivo)
-	if interactive {
-		if _, err := os.Stat(agentPath); err == nil {
-			ui.YellowText.Println("⚠️  Ya existe un archivo Agent.md en este proyecto.")
-			ui.YellowText.Println("   Si continúas, se regenerará y perderás cambios manuales.")
-			if !ui.AskYesNo("¿Deseas continuar?") {
-				ui.PrintInfo("Operación cancelada.")
-				return nil
-			}
+	// 2. Leer skills existentes si ya hay Agent.md
+	if exists(agentPath) {
+		ui.PrintInfo("Agent.md existente detectado. Leyendo configuración actual...")
+		existingSkills, err = readExistingSkillsFromAgent(agentPath)
+		if err != nil {
+			ui.PrintWarning(fmt.Sprintf("No se pudieron leer las skills actuales: %v", err))
 		}
+	} else {
+		existingSkills = make(map[string]bool)
 	}
 
-	// 3. Verificar si existen skills (si no, advertir)
-	skillsDir, err := getFirstSkillsSourceDir()
-	if err != nil || skillsDir == "" {
-		ui.YellowText.Println("\n⚠️  No se detectaron skills sincronizadas.")
-		ui.Gray.Println("   El Agent.md generado será básico y no tendrá referencias a skills.")
-		ui.Gray.Println("   Recomendación: Ejecuta 'kolyn sync' después de esto.")
-		if interactive && !ui.AskYesNo("¿Deseas continuar de todos modos?") {
+	// 3. Escanear skills disponibles
+	allSkills, err := scanSkills(ctx)
+	if err != nil {
+		ui.YellowText.Println("\n⚠️  No se pudieron escanear las skills.")
+		ui.Gray.Println("   Asegúrate de ejecutar 'kolyn sync' primero.")
+		if interactive && !ui.AskYesNo("¿Deseas continuar sin skills?") {
 			return nil
 		}
 	}
 
-	// 4. Preguntas Interactivas o Defaults
-	ui.PrintStep("Configurando features del proyecto:")
+	// 4. Selección Interactiva (Huh)
+	var selectedSkills []SkillInfo
 
-	features := ProjectFeatures{Type: pType}
+	if interactive && len(allSkills) > 0 {
+		// Agrupar skills para presentación visual (aunque huh flat list también se ve bien)
+		// Vamos a usar el formato "Category › Name" para las opciones de huh
 
-	if interactive {
-		features.UI = ui.AskYesNo("❓ ¿Tu proyecto usa componentes de UI?")
-		features.Database = ui.AskYesNo("❓ ¿Tu proyecto tiene base de datos?")
-		features.Auth = ui.AskYesNo("❓ ¿Tu proyecto tiene autenticación de usuarios?")
-		features.API = ui.AskYesNo("❓ ¿Tu proyecto consume APIs externas?")
-		features.DevOps = ui.AskYesNo("❓ ¿Tienes configurado CI/CD?")
-	} else {
-		// Defaults para modo no interactivo (ej. Scaffold)
-		if pType == "nextjs" {
-			features.UI = true
-			features.API = true
+		// Ordenar todo por categoría y nombre
+		sort.Slice(allSkills, func(i, j int) bool {
+			if allSkills[i].Category == allSkills[j].Category {
+				return allSkills[i].Name < allSkills[j].Name
+			}
+			return allSkills[i].Category < allSkills[j].Category
+		})
+
+		var uiOptions []ui.SkillOption
+		skillMap := make(map[string]SkillInfo) // Para recuperar el objeto SkillInfo después
+
+		for _, s := range allSkills {
+			// Construir label bonito
+			label := fmt.Sprintf("%s › %s", s.Category, s.Name)
+			if s.Category == "root" || s.Category == "." {
+				label = s.Name
+			}
+
+			// Determinar si estaba seleccionado
+			isSelected := isSkillSelected(s.Path, existingSkills)
+
+			uiOptions = append(uiOptions, ui.SkillOption{
+				Label:       label,
+				Value:       s.Path,
+				Description: s.Description,
+				Selected:    isSelected,
+			})
+			skillMap[s.Path] = s
 		}
-		ui.PrintInfo("Usando configuración por defecto para scaffold.")
+
+		// Llamar al nuevo selector
+		selectedPaths, err := ui.SelectSkills("Selecciona las skills para este proyecto:", uiOptions)
+		if err != nil {
+			return nil // Cancelado
+		}
+
+		// Reconstruir lista de selectedSkills
+		for _, path := range selectedPaths {
+			if skill, ok := skillMap[path]; ok {
+				selectedSkills = append(selectedSkills, skill)
+			}
+		}
+
+	} else if len(allSkills) > 0 {
+		ui.PrintInfo("Modo no interactivo: No se seleccionaron skills adicionales.")
 	}
 
 	// 5. Generar Agent.md
-	if err := GenerateAgentMD(root, features, skillsDir); err != nil {
+	if err := GenerateAgentMD(root, pType, selectedSkills); err != nil {
 		return err
 	}
 
 	ui.Separator()
 	ui.PrintSuccess("✅ Agent.md generado exitosamente.")
+	ui.Gray.Printf("   Skills activas: %d\n", len(selectedSkills))
 	ui.Gray.Println("Ahora puedes ejecutar 'kolyn check' para auditar el proyecto.")
 
 	return nil
+}
+
+type CategoryGroup struct {
+	Name   string
+	Skills []SkillInfo
+}
+
+// isSkillSelected verifica si un path de skill está en el map de existentes.
+func isSkillSelected(skillPath string, existing map[string]bool) bool {
+	// Intentar match exacto
+	if existing[skillPath] {
+		return true
+	}
+	// Intentar match por nombre de archivo
+	base := filepath.Base(skillPath)
+	for k := range existing {
+		if strings.Contains(k, base) {
+			return true
+		}
+	}
+	return false
+}
+
+// readExistingSkillsFromAgent parsea el Agent.md y busca links en la sección de Skills
+func readExistingSkillsFromAgent(path string) (map[string]bool, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	skills := make(map[string]bool)
+	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	inSkillsSection := false
+
+	// Regex para markdown links: [Title](path)
+	linkRegex := regexp.MustCompile(`\[.*?\]\((.*?)\)`)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if strings.HasPrefix(line, "### Skills Reference") {
+			inSkillsSection = true
+			continue
+		}
+		if strings.HasPrefix(line, "### ") && inSkillsSection {
+			inSkillsSection = false // Fin de sección
+			break
+		}
+
+		if inSkillsSection {
+			matches := linkRegex.FindStringSubmatch(line)
+			if len(matches) > 1 {
+				linkPath := matches[1]
+				skills[linkPath] = true
+			}
+		}
+	}
+	return skills, nil
 }
 
 func detectProjectType(root string) string {
@@ -125,29 +211,10 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// GenerateAgentMD generates the Agent.md file
-func GenerateAgentMD(root string, f ProjectFeatures, skillsDirName string) error {
+// GenerateAgentMD generates the Agent.md file with selected skills
+func GenerateAgentMD(root string, pType string, skills []SkillInfo) error {
 	projectName := filepath.Base(root)
 
-	// Construir lista de features activas
-	var activeFeatures []string
-	if f.UI {
-		activeFeatures = append(activeFeatures, "ui")
-	}
-	if f.Database {
-		activeFeatures = append(activeFeatures, "database")
-	}
-	if f.Auth {
-		activeFeatures = append(activeFeatures, "auth")
-	}
-	if f.API {
-		activeFeatures = append(activeFeatures, "api")
-	}
-	if f.DevOps {
-		activeFeatures = append(activeFeatures, "devops")
-	}
-
-	// Contenido base del archivo
 	var content strings.Builder
 
 	// Header
@@ -157,72 +224,40 @@ Kolyn Version: %s
 Generated: %s
 Project Type: %s
 
-## Features
-%s
-
 ---
 
 ## Project Context
 
 ### Stack & Architecture
-This project uses the following stack conventions:
-- **Type:** %s
-- **Capabilities:** %s
+This project is defined by the following selected skills.
+Type: %s
 `,
 		projectName,
-		Version,
+		Version, // Asumiendo que Version es global en cmd package, si no, habría que importarlo o definirlo
 		time.Now().Format("2006-01-02"),
-		f.Type,
-		formatList(activeFeatures),
-		strings.ToUpper(f.Type),
-		formatInlineList(activeFeatures),
+		pType,
+		strings.ToUpper(pType),
 	)
 
-	// Solo agregar sección de Skills si tenemos skills sincronizadas
-	if skillsDirName != "" {
-		basePath := fmt.Sprintf("~/.kolyn/sources/%s", skillsDirName)
-		var refs []string
+	// Skills Section
+	if len(skills) > 0 {
+		fmt.Fprintf(&content, "\n### Skills Reference\nThe following skills are active for this project.\n\n")
 
-		// Base references based on type
-		if f.Type == "nextjs" {
-			refs = append(refs, fmt.Sprintf("- [Next.js Framework](%s/web/framework/nextjs.md)", basePath))
-		}
-		if f.Type == "go" {
-			refs = append(refs, fmt.Sprintf("- [Golang Core](%s/backend/go/core.md)", basePath))
-		}
+		home, _ := os.UserHomeDir()
 
-		// Feature references
-		if f.UI {
-			refs = append(refs, fmt.Sprintf("- [UI Components](%s/web/ui/shadcn.md)", basePath))
-			refs = append(refs, fmt.Sprintf("- [UI Stack](%s/web/ui/stack.md)", basePath))
-		}
-		if f.Database {
-			refs = append(refs, fmt.Sprintf("- [Database/ORM](%s/web/data/drizzle.md)", basePath))
-			refs = append(refs, fmt.Sprintf("- [Database Design](%s/web/data/postgres.md)", basePath))
-		}
-		if f.Auth {
-			refs = append(refs, fmt.Sprintf("- [Authentication](%s/web/auth/better-auth.md)", basePath))
-		}
-		if f.API || f.Type == "nextjs" {
-			refs = append(refs, fmt.Sprintf("- [Data Validation](%s/web/data/zod.md)", basePath))
-		}
-		if f.DevOps {
-			refs = append(refs, fmt.Sprintf("- [CI/CD](%s/devops/ci-cd.md)", basePath))
-		}
+		for _, s := range skills {
+			displayPath := s.Path
+			if strings.HasPrefix(s.Path, home) {
+				displayPath = strings.Replace(s.Path, home, "~", 1)
+			}
 
-		if len(refs) > 0 {
-			fmt.Fprintf(&content, `
-### Skills Reference
-The following skills are active for this project. Use 'kolyn skills paths' to find more.
-
-%s
-`, strings.Join(refs, "\n"))
+			// Formato: - [Name](path)
+			fmt.Fprintf(&content, "- [%s (%s)](%s)\n", s.Name, s.Category, displayPath)
 		}
 	} else {
-		// Mensaje alternativo si no hay skills
 		fmt.Fprintf(&content, `
 ### Skills Reference
-⚠️ No skills detected. Run 'kolyn sync' to download your team's skills and then regenerate this file with 'kolyn init'.
+⚠️ No skills selected. Run 'kolyn init' again to add skills.
 `)
 	}
 
@@ -237,25 +272,7 @@ The following skills are active for this project. Use 'kolyn skills paths' to fi
 	return os.WriteFile(filepath.Join(root, "Agent.md"), []byte(content.String()), 0644)
 }
 
-func formatList(items []string) string {
-	if len(items) == 0 {
-		return "- core"
-	}
-	var sb strings.Builder
-	for _, item := range items {
-		sb.WriteString(fmt.Sprintf("- %s\n", item))
-	}
-	return strings.TrimRight(sb.String(), "\n")
-}
-
-func formatInlineList(items []string) string {
-	if len(items) == 0 {
-		return "Core only"
-	}
-	return strings.Join(items, ", ")
-}
-
-// getFirstSkillsSourceDir intenta encontrar el primer directorio de skills disponible
+// Helper to get first skills dir (retained for backward compat if needed, mainly used by scanSkills now)
 func getFirstSkillsSourceDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -265,7 +282,7 @@ func getFirstSkillsSourceDir() (string, error) {
 
 	entries, err := os.ReadDir(sourcesDir)
 	if err != nil {
-		return "", err // Probablemente no existe
+		return "", err
 	}
 
 	for _, entry := range entries {

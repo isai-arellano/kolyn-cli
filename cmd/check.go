@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/isai-arellano/kolyn-cli/cmd/config"
@@ -18,9 +19,9 @@ import (
 
 var checkCmd = &cobra.Command{
 	Use:   "check",
-	Short: "Audita el proyecto usando el contexto de Agent.md",
-	Long: `Lee el archivo Agent.md para entender el tipo de proyecto y features activas,
-y luego valida que el código cumpla con las reglas definidas en las skills.`,
+	Short: "Audita el proyecto usando las skills definidas en Agent.md",
+	Long: `Lee el archivo Agent.md para identificar las skills activas y 
+valida que el código cumpla con las reglas definidas en ellas.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runCheck(cmd.Context())
 	},
@@ -30,8 +31,6 @@ y luego valida que el código cumpla con las reglas definidas en las skills.`,
 type SkillFrontmatter struct {
 	Name        string     `yaml:"name"`
 	Description string     `yaml:"description"`
-	AppliesTo   []string   `yaml:"applies_to"`
-	Capability  string     `yaml:"capability"`
 	Check       SkillCheck `yaml:"check"`
 }
 
@@ -52,8 +51,8 @@ type PackageJSON struct {
 }
 
 type AgentContext struct {
-	ProjectType string
-	Features    map[string]bool
+	ProjectType      string
+	ActiveSkillPaths []string
 }
 
 func runCheck(ctx context.Context) error {
@@ -80,22 +79,17 @@ func runCheck(ctx context.Context) error {
 
 	ui.ShowSection("🕵️  Kolyn Check")
 	ui.Cyan.Printf("   🔍 Tipo: %s\n", agentCtx.ProjectType)
-	featuresList := []string{}
-	for k := range agentCtx.Features {
-		featuresList = append(featuresList, k)
+	ui.Cyan.Printf("   📚 Skills Activos: %d\n\n", len(agentCtx.ActiveSkillPaths))
+
+	if len(agentCtx.ActiveSkillPaths) == 0 {
+		ui.YellowText.Println("⚠️  No hay skills definidos en Agent.md para auditar.")
+		return nil
 	}
-	ui.Cyan.Printf("   📋 Features: %s\n\n", strings.Join(featuresList, ", "))
 
 	// 3. Cargar package.json (si aplica)
 	pkg, _ := loadPackageJSON(cwd)
 	if pkg == nil && (agentCtx.ProjectType == "nextjs" || agentCtx.ProjectType == "node") {
 		ui.PrintWarning("No se encontró package.json. Se omitirán chequeos de dependencias.")
-	}
-
-	// 4. Obtener skills disponibles
-	skills, err := scanSkills(ctx)
-	if err != nil {
-		return fmt.Errorf("error leyendo skills: %w", err)
 	}
 
 	totalChecks := 0
@@ -104,26 +98,24 @@ func runCheck(ctx context.Context) error {
 
 	ui.Separator()
 
-	// 5. Validar cada skill
-	for _, skill := range skills {
-		fm, err := parseSkillFrontmatter(skill.Path)
+	// 4. Validar cada skill listado en Agent.md
+	for _, skillPath := range agentCtx.ActiveSkillPaths {
+		// Resolver path (~)
+		resolvedPath := resolveHomePath(skillPath)
+
+		// Verificar existencia
+		if _, err := os.Stat(resolvedPath); os.IsNotExist(err) {
+			ui.PrintFail("Skill no encontrado: %s", skillPath)
+			ui.Gray.Println("  (Puede que necesites ejecutar 'kolyn sync' o 'kolyn init')")
+			warnings++
+			continue
+		}
+
+		fm, err := parseSkillFrontmatter(resolvedPath)
 		if err != nil {
-			continue // Skip files without frontmatter
-		}
-
-		// Filtro 1: Applies To (Project Type)
-		if len(fm.AppliesTo) > 0 && !contains(fm.AppliesTo, agentCtx.ProjectType) {
-			continue // No aplica a este tipo de proyecto
-		}
-
-		// Filtro 2: Capability (Feature)
-		// Si el skill requiere una capability y el proyecto NO la tiene activa, SKIP
-		// Excepción: si capability es "core", siempre aplica (si pasó el filtro de tipo)
-		if fm.Capability != "" && fm.Capability != "core" {
-			if !agentCtx.Features[fm.Capability] {
-				ui.Gray.Printf("⏭️  Omitido: %s/%s [%s] (feature inactiva)\n", skill.Category, skill.Name, fm.Capability)
-				continue
-			}
+			// Si falla el frontmatter, tal vez es un md simple sin reglas, lo ignoramos silenciosamente
+			// o mostramos un warning debug? Mejor ignorar si no tiene frontmatter válido.
+			continue
 		}
 
 		// Si no tiene reglas de check, skip
@@ -133,7 +125,17 @@ func runCheck(ctx context.Context) error {
 			continue
 		}
 
-		ui.WhiteText.Printf("📦 Evaluando: %s/%s [%s]\n", skill.Category, skill.Name, fm.Capability)
+		// Nombre visual: Category/Name
+		skillName := fm.Name
+		if skillName == "" {
+			skillName = filepath.Base(resolvedPath)
+		}
+
+		// Obtener categoría del path para display
+		relDir := filepath.Dir(resolvedPath)
+		category := filepath.Base(relDir)
+
+		ui.WhiteText.Printf("📦 Evaluando: %s/%s\n", category, skillName)
 		skillPassed := true
 
 		// --- CHECKS ---
@@ -216,9 +218,8 @@ func runCheck(ctx context.Context) error {
 			}
 		}
 
-		// 6. Env Vars (Simple check if .env exists and contains var - naive implementation)
+		// 6. Env Vars
 		if len(rules.EnvVars) > 0 {
-			// Check .env file content
 			envContent, _ := os.ReadFile(filepath.Join(cwd, ".env"))
 			envStr := string(envContent)
 
@@ -259,12 +260,13 @@ func parseAgentContext(path string) (*AgentContext, error) {
 	defer file.Close()
 
 	ctx := &AgentContext{
-		Features:    make(map[string]bool),
-		ProjectType: "generic", // Default
+		ProjectType:      "generic",
+		ActiveSkillPaths: []string{},
 	}
 
 	scanner := bufio.NewScanner(file)
-	inFeatures := false
+	inSkillsSection := false
+	linkRegex := regexp.MustCompile(`\[.*?\]\((.*?)\)`)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -277,25 +279,33 @@ func parseAgentContext(path string) (*AgentContext, error) {
 			}
 		}
 
-		// Parse Features Block
-		if strings.HasPrefix(line, "## Features") {
-			inFeatures = true
+		// Parse Skills Block
+		if strings.HasPrefix(line, "### Skills Reference") {
+			inSkillsSection = true
 			continue
 		}
-		if inFeatures && strings.HasPrefix(line, "##") {
-			inFeatures = false // End of block
+		if strings.HasPrefix(line, "### ") && inSkillsSection {
+			inSkillsSection = false
+			continue
 		}
 
-		if inFeatures && strings.HasPrefix(line, "-") {
-			feature := strings.TrimPrefix(line, "-")
-			feature = strings.TrimSpace(feature)
-			if feature != "" {
-				ctx.Features[feature] = true
+		if inSkillsSection {
+			matches := linkRegex.FindStringSubmatch(line)
+			if len(matches) > 1 {
+				ctx.ActiveSkillPaths = append(ctx.ActiveSkillPaths, matches[1])
 			}
 		}
 	}
 
 	return ctx, nil
+}
+
+func resolveHomePath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
 
 func parseSkillFrontmatter(path string) (*SkillFrontmatter, error) {
@@ -341,15 +351,6 @@ func hasDependency(pkg *PackageJSON, dep string) bool {
 	}
 	if _, ok := pkg.DevDependencies[dep]; ok {
 		return true
-	}
-	return false
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
 	}
 	return false
 }
