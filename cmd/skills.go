@@ -17,17 +17,12 @@ import (
 
 var skillsCmd = &cobra.Command{
 	Use:   "skills",
-	Short: "Retorna las rutas de los skills disponibles para contexto de IA",
-	Long:  `Retorna un JSON con todas las skills disponibles y sus rutas. La IA puede usar estas rutas para leer el contenido de cada skill.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return runSkillsJSON(cmd.Context())
-	},
+	Short: "Gestiona skills (listar, crear, paths)",
 }
 
 var skillsPathsCmd = &cobra.Command{
 	Use:   "paths",
-	Short: "Retorna solo las rutas de los skills",
-	Long:  `Retorna una lista de rutas de skills (una por línea) para facilitar el parsing.`,
+	Short: "Retorna solo las rutas de los skills (Contexto IA)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSkillsPaths(cmd.Context())
 	},
@@ -36,10 +31,29 @@ var skillsPathsCmd = &cobra.Command{
 var skillsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lista skills y permite ver/editar su contenido",
-	Long:  `Muestra lista de skills. Selecciona uno para ver contenido, editar o regresar.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSkillsList(cmd.Context())
 	},
+}
+
+var skillsNewCmd = &cobra.Command{
+	Use:   "new [name]",
+	Short: "Crea una nueva skill usando la plantilla estándar",
+	Long:  `Crea un archivo markdown con la estructura correcta (Frontmatter + Secciones) en ~/.kolyn/skills/`,
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
+		return runSkillsNew(cmd.Context(), name)
+	},
+}
+
+func init() {
+	skillsCmd.AddCommand(skillsPathsCmd)
+	skillsCmd.AddCommand(skillsListCmd)
+	skillsCmd.AddCommand(skillsNewCmd)
 }
 
 // SkillInfo representa la información de un skill
@@ -69,6 +83,13 @@ func getSkillDescriptionFromFile(content string) string {
 			}
 		}
 		if strings.HasPrefix(line, "**Description**") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+		// Try extracting from frontmatter description
+		if strings.HasPrefix(line, "description:") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
 				return strings.TrimSpace(parts[1])
@@ -130,7 +151,7 @@ func scanSkills(ctx context.Context) ([]SkillInfo, error) {
 			default:
 			}
 
-			if !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
+			if !d.IsDir() && strings.HasSuffix(d.Name(), ".md") && d.Name() != "README.md" {
 				// Calcular categoría relativa al baseDir
 				relPath, _ := filepath.Rel(baseDir, path)
 				category := filepath.Dir(relPath)
@@ -154,7 +175,8 @@ func scanSkills(ctx context.Context) ([]SkillInfo, error) {
 			return nil
 		})
 		if err != nil {
-			return nil, fmt.Errorf("error escaneando directorio %s: %w", baseDir, err)
+			// Don't fail completely if one dir fails
+			// return nil, fmt.Errorf("error escaneando directorio %s: %w", baseDir, err)
 		}
 	}
 
@@ -330,10 +352,103 @@ func editSkillContent(ctx context.Context, skill SkillInfo) error {
 	return nil
 }
 
-// GetAllSkillsPaths retorna todas las rutas de skills (para uso interno)
-// Deprecated: use scanSkills instead or if needed for external consumers, refactor to use context
+// runSkillsNew crea una nueva skill con plantilla
+func runSkillsNew(ctx context.Context, nameArg string) error {
+	ui.ShowSection("✨ Crear Nueva Skill")
+
+	name := nameArg
+	if name == "" {
+		name = ui.ReadInput("Nombre del skill (ej. flutter-riverpod): ")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("el nombre es requerido")
+	}
+
+	// Asegurar extensión .md
+	if !strings.HasSuffix(name, ".md") {
+		name += ".md"
+	}
+
+	// Directorio destino: ~/.kolyn/skills/ (Local User Skills)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	destDir := filepath.Join(homeDir, ".kolyn", "skills")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
+
+	destPath := filepath.Join(destDir, name)
+	if _, err := os.Stat(destPath); err == nil {
+		ui.PrintWarning("El archivo ya existe.")
+		if !ui.AskYesNo("¿Sobrescribir?") {
+			return nil
+		}
+	}
+
+	// Plantilla Estándar 2026
+	template := fmt.Sprintf(`---
+name: %s
+description: Descripción corta del skill...
+agent_rules:
+  - "**Rule 1:** Description of rule 1."
+  - "**Rule 2:** Description of rule 2."
+  - "**Quality:** No prints, clean code."
+applies_to: [generic]
+capability: core
+check:
+  required_deps: []
+  files_exist_any: []
+---
+
+# %s
+
+## 1. Overview
+Describe el propósito de esta skill y cuándo debe usarse.
+
+## 2. Core Concepts
+Conceptos fundamentales que el agente debe entender.
+
+## 3. Code Snippets
+Ejemplos de código para copiar/pegar.
+
+### Example 1
+`+"```"+`
+// Code here
+`+"```"+`
+
+## 4. Checklist
+- [ ] Regla 1 cumplida
+- [ ] Regla 2 cumplida
+`, strings.TrimSuffix(name, ".md"), strings.TrimSuffix(name, ".md"))
+
+	if err := os.WriteFile(destPath, []byte(template), 0644); err != nil {
+		return fmt.Errorf("error escribiendo archivo: %w", err)
+	}
+
+	ui.PrintSuccess("✅ Skill creada en: %s", destPath)
+	ui.Gray.Println("Ahora puedes editarla con 'kolyn skills list' o tu editor favorito.")
+
+	// Opción de abrir editor inmediatamente
+	if ui.AskYesNo("¿Deseas editarla ahora?") {
+		editor := os.Getenv("EDITOR")
+		if editor == "" {
+			editor = "vim"
+		}
+		cmd := exec.CommandContext(ctx, editor, destPath)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
+	return nil
+}
+
+// Deprecated functions kept for interface compat if needed
 func GetAllSkillsPaths() ([]string, error) {
-	// Simple wrapper for backward compatibility if needed, though scanSkills is preferred
 	skills, err := scanSkills(context.Background())
 	if err != nil {
 		return nil, err
@@ -345,7 +460,6 @@ func GetAllSkillsPaths() ([]string, error) {
 	return paths, nil
 }
 
-// GetSkillContent lee el contenido de un skill por su ruta
 func GetSkillContent(skillPath string) (string, error) {
 	content, err := os.ReadFile(skillPath)
 	if err != nil {
