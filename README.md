@@ -51,17 +51,17 @@ kolyn scaffold
 3. **Automáticamente** inicia la configuración de contexto (`Agent.md`).
 
 ### 2. Inicializar Proyecto Existente
-Si ya tienes código, genera el contexto para tu IA:
+Si ya tienes código, inyecta el contexto y las reglas de tu equipo:
 
 ```bash
 kolyn init
 ```
-Kolyn detectará tu stack (Next.js, Go, Python) y te hará preguntas clave:
-*   *¿Usas base de datos?*
-*   *¿Tienes autenticación?*
-*   *¿Consumes APIs externas?*
+1. **Detecta** tu stack automáticamente.
+2. **Seleccionas** las skills que aplican (Vendorización).
+3. **Copia** las skills seleccionadas a `.kolyn/skills/` (tu proyecto se vuelve autónomo).
+4. **Genera/Actualiza** `Agent.md` inyectando reglas críticas y referencias.
 
-El resultado es un archivo `Agent.md` optimizado que tu IA leerá para entender el proyecto.
+*Nota: Si ya tienes un `Agent.md`, Kolyn lo "hidrata" (actualiza solo skills y reglas) respetando tus notas manuales.*
 
 ### 3. Auditar (Check)
 Verifica que tu código cumpla con las reglas definidas en tus skills.
@@ -73,6 +73,16 @@ Kolyn lee el `Agent.md`, ve qué "Capabilities" (capacidades) activaste (ej. Dat
 *   ✅ Verifica dependencias requeridas (ej. `drizzle-orm`).
 *   ✅ Verifica archivos de configuración (ej. `drizzle.config.ts`).
 *   ❌ Alerta sobre dependencias prohibidas.
+
+---
+
+## 🤖 Cómo usar con tu Agente (AI)
+
+Una vez generado el `Agent.md`, usa este prompt para alinear a tu IA (Cursor, Windsurf, Cline) con el proyecto:
+
+> **"Analiza @Agent.md. Lee detenidamente cada archivo referenciado en la sección 'Skills Reference' (ubicados en `.kolyn/skills/`) para entender la arquitectura y reglas.**
+>
+> **En base a eso, completa tu contexto interno. A partir de ahora, verifica siempre estas skills antes de generar código para asegurar consistencia con el estándar del proyecto."**
 
 ---
 
